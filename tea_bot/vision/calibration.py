@@ -96,7 +96,7 @@ def main(args):
         cv.imshow('undistored', undistorted)
         
         # allow quitting
-        if cv.waitKey(1) & 0XFF == ord('1'):
+        if cv.waitKey(1) & 0XFF == ord('q'):
             break
     
     vid.release()
