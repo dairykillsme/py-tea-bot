@@ -7,3 +7,4 @@ dist
 build
 Docs
 *.egg-info
+share/calibration/nexigo_webcam/*.jpg

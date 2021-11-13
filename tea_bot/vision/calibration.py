@@ -27,7 +27,7 @@ class CameraCalibration:
         criteria = (cv.TERM_CRITERIA_EPS + cv.TERM_CRITERIA_MAX_ITER, 30, 0.001)
         # prepare object points, like (0,0,0), (1,0,0), (2,0,0) ....,(6,5,0)
         objp = np.zeros((6*7,3), np.float32)
-        objp[:,:2] = np.mgrid[0:7,0:6].T.resshape(-1,2)
+        objp[:,:2] = np.mgrid[0:7,0:6].T.reshape(-1,2)
         # Arrays to store object points and image points from all the images.
         objpoints = [] # 3d point in real world space
         imgpoints = [] # 2d points in image plane.
@@ -53,13 +53,28 @@ class CameraCalibration:
 
         # Save calibration parameters
         calibration_file = cv.FileStorage(self.calibration_file, cv.FILE_STORAGE_WRITE)
-        calibration_file.write(name=CAMERA_MATRIX_NAME, value=mtx)
-        calibration_file.write(name=DIST_COEFFS_NAME, value=dist)
+        calibration_file.write(name=CAMERA_MATRIX_NAME, val=mtx)
+        calibration_file.write(name=DIST_COEFFS_NAME, val=dist)
         calibration_file.release()
 
         # Update class parameters
         self.camera_matrix = mtx
         self.dist_coeffs = dist
+
+    def undistort(self, img : np.matrix):
+        """Undistort an image.
+        Args:
+            img : 2D or 3D image matrix
+        Returns:
+            dst : undistorted and cropped image matrix
+        """
+        h,w = img.shape[:2]
+        new_camera_mtx, roi = cv.getOptimalNewCameraMatrix(self.camera_matrix, self.dist_coeffs, (w,h), 1, (w,h))
+        # undistort image
+        x, y, w, h = roi
+        dst = cv.undistort(img, self.camera_matrix, self.dist_coeffs, None, new_camera_mtx)
+        return dst[y:y+h, x:x+w]
+
 
 def main(args):
     parser = argparse.ArgumentParser()
@@ -70,6 +85,22 @@ def main(args):
     # If being executed as main function, this script is used for calibration
     calibration = CameraCalibration(parsed_args.calibration_file)
     calibration.generate_calibration(parsed_args.calibration_images_dir)
+
+    # Lets see how well this works
+    vid = cv.VideoCapture(0)
+
+    while(True):
+        ret, frame = vid.read()
+        undistorted = calibration.undistort(frame)
+        cv.imshow('distorted', frame)
+        cv.imshow('undistored', undistorted)
+        
+        # allow quitting
+        if cv.waitKey(1) & 0XFF == ord('1'):
+            break
+    
+    vid.release()
+    cv.destroyAllWindows()
 
 if __name__ == '__main__':
     main(sys.argv[1:])
