@@ -1,0 +1,9 @@
+.vscode
+*venv
+*__pycache__
+*.pyc
+*.csv
+dist
+build
+Docs
+*.egg-info
