@@ -18,6 +18,8 @@ cam_calibration = CameraCalibration(CALIBRATION_FILE_DEFAULT)
 cam_calibration.load_calibration()
 
 vid = cv.VideoCapture(0)
+vid.set(cv.CAP_PROP_FRAME_WIDTH, 1280)
+vid.set(cv.CAP_PROP_FRAME_HEIGHT, 720)
 
 while(True):
     # Capture video and undistort it

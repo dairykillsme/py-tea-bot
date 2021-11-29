@@ -88,6 +88,8 @@ def main(args):
 
     # Lets see how well this works
     vid = cv.VideoCapture(0)
+    vid.set(cv.CAP_PROP_FRAME_WIDTH, 1280)
+    vid.set(cv.CAP_PROP_FRAME_HEIGHT, 720)
 
     while(True):
         ret, frame = vid.read()
