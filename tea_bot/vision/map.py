@@ -2,8 +2,11 @@ import sys
 import time
 from threading import Thread
 import cv2 as cv
-from cv2 import aruco, imwrite
+from cv2 import aruco, imwrite, perspectiveTransform
+import matplotlib
 import numpy as np
+import matplotlib.pyplot as plt
+from numpy.linalg import svd
 from .calibration import CameraCalibration
 
 CALIBRATION_FILE_DEFAULT = "share/calibration/nexigo_webcam/cfg.xml"
@@ -26,7 +29,7 @@ class WorldMap:
     board = aruco.GridBoard_create(5, 7, MARKER_LENGTH, MARKER_SEPARATION, aruco_dict)
     aruco_params = aruco.DetectorParameters_create()
 
-    def __init__(self, calibration_file, video_index=0, show_feed=False) -> None:
+    def __init__(self, calibration_file, area_width=42, area_height=42, video_index=0, show_feed=False) -> None:
         # Load calibration
         self.calibration = CameraCalibration(calibration_file)
         self.calibration.load_calibration()
@@ -36,9 +39,26 @@ class WorldMap:
         self.vid.set(cv.CAP_PROP_FRAME_HEIGHT, 720)
         # Intialize state variables
         self.running = False
+        self.ready = False
         self.show_feed = show_feed
         self.sensing_thread = Thread(target=self.process_image)
-    
+        # Initialize position variables
+        self.top_left = np.zeros((1,2))
+        self.top_right = np.zeros((1,2))
+        self.bottom_left = np.zeros((1,2))
+        self.bottom_right = np.zeros((1,2))
+        self.arm_base = np.zeros((1,2))
+        self.arm_joint = np.zeros((1,2))
+        self.arm_end_effector = np.zeros((1,2))
+        # Intialize some constants
+        TOP_LEFT_SRC = [-area_width/2, area_height/2]
+        TOP_RIGHT_SRC = [area_width/2, area_height/2]
+        BOTTOM_LEFT_SRC = [-area_width/2, -area_height/2]
+        BOTTOM_RIGHT_SRC = [area_width/2, -area_height/2]
+        self.SOURCE_POINTS = np.float32([TOP_LEFT_SRC,
+                                       TOP_RIGHT_SRC,
+                                       BOTTOM_LEFT_SRC,
+                                       BOTTOM_RIGHT_SRC])
     def start(self):
         self.running = True
         self.sensing_thread.start()
@@ -52,6 +72,83 @@ class WorldMap:
     def get_obstacle_list(self):
         pass
 
+    def process_markers(self, corners, ids):
+        """ Assuming all corners are fixed at known locations, arm base is 0,0,
+        and all markers are coplanar (or close enough for the purposes of this)
+        """
+        if ids is not None:
+            if len(ids) == 7:
+                # Translate from camera space to world space
+                for id_idx in range(0, len(ids)):
+                    if ids[id_idx] == WorldMap.TOP_LEFT_ARUCO_ID:
+                        self.top_left = np.mean(corners[id_idx], axis=1)
+                    elif ids[id_idx] == WorldMap.TOP_RIGHT_ARUCO_ID:
+                        self.top_right = np.mean(corners[id_idx], axis=1)
+                    elif ids[id_idx] == WorldMap.BOTTOM_LEFT_ARUCO_ID:
+                        self.bottom_left = np.mean(corners[id_idx], axis=1)
+                    elif ids[id_idx] == WorldMap.BOTTOM_RIGHT_ARUCO_ID:
+                        self.bottom_right = np.mean(corners[id_idx], axis=1)
+                    elif ids[id_idx] == WorldMap.ARM_BASE_ARUCO_ID:
+                        self.arm_base = np.mean(corners[id_idx], axis=1)
+                    elif ids[id_idx] == WorldMap.ARM_JOINT_ARUCO_ID:
+                        self.arm_joint = np.mean(corners[id_idx], axis=1)
+                    elif ids[id_idx] == WorldMap.ARM_END_EFFECTOR_ARUCO_ID:
+                        self.arm_end_effector = np.mean(corners[id_idx], axis=1)
+                
+                # Make arm_base the origin
+                self.top_left -= self.arm_base
+                self.top_right -= self.arm_base
+                self.bottom_left -= self.arm_base
+                self.bottom_right -= self.arm_base
+                self.arm_joint -= self.arm_base
+                self.arm_end_effector -= self.arm_base
+                self.arm_base -= self.arm_base
+
+                # find affine transform knowing the location of the source points
+                real_points = np.float32([self.top_left[0], self.top_right[0], self.bottom_left[0], self.bottom_right[0]])
+                warp_mat = cv.getPerspectiveTransform(real_points, self.SOURCE_POINTS)
+
+                q = np.dot(warp_mat, np.concatenate((self.top_left, [[1]]), axis=1).T)
+                self.top_left = np.divide(q[:2], q[2]).T
+                q = np.dot(warp_mat, np.concatenate((self.top_right, [[1]]), axis=1).T)
+                self.top_right = np.divide(q[:2], q[2]).T
+                q = np.dot(warp_mat, np.concatenate((self.bottom_left, [[1]]), axis=1).T)
+                self.bottom_left = np.divide(q[:2], q[2]).T
+                q = np.dot(warp_mat, np.concatenate((self.bottom_right, [[1]]), axis=1).T)
+                self.bottom_right = np.divide(q[:2], q[2]).T
+                q = np.dot(warp_mat, np.concatenate((self.arm_base, [[1]]), axis=1).T)
+                self.arm_base = np.divide(q[:2], q[2]).T
+                q = np.dot(warp_mat, np.concatenate((self.arm_joint, [[1]]), axis=1).T)
+                self.arm_joint = np.divide(q[:2], q[2]).T
+                q = np.dot(warp_mat, np.concatenate((self.arm_end_effector, [[1]]), axis=1).T)
+                self.arm_end_effector = np.divide(q[:2], q[2]).T
+
+                if not self.ready:
+                    self.ready = True
+
+    def get_tagged_points(self):
+        # Plot points
+        if (self.show_feed and self.ready):
+            boundary = np.array([self.top_left,
+                                 self.top_right,
+                                 self.bottom_right,
+                                 self.bottom_left,
+                                 self.top_left])
+            bx,by = boundary.T
+
+            arm = np.array([self.arm_base,
+                            self.arm_joint,
+                            self.arm_end_effector])
+            ax,ay = arm.T
+
+            matplotlib.use('tkagg') # need to use different backend
+            plt.cla()
+            plt.plot(ax[0], ay[0])
+            plt.plot(bx[0], by[0])
+            plt.axis('scaled')
+            plt.pause(0.0001)
+
+
     def process_image(self):
         while (self.running):
             # Capture video and undistort it
@@ -64,6 +161,7 @@ class WorldMap:
             # Detect aruco markers
             corners,ids,rejected = aruco.detectMarkers(frame_undistorted_gray, self.aruco_dict, parameters=self.aruco_params)
             aruco.refineDetectedMarkers(frame_undistorted_gray, self.board, corners, ids, rejected)
+            self.process_markers(corners, ids)
 
             if (self.show_feed):
                 im_with_aruco_board = frame_undistorted
@@ -75,8 +173,6 @@ class WorldMap:
                 # allow quitting
                 if cv.waitKey(1) & 0XFF == ord('q'):
                     self.running = False
-            
-            time.sleep(0.001) # Update every 1 mSec
 
         # On completion destroy extra stuff
         self.vid.release()
@@ -87,7 +183,8 @@ def main(args):
     map.start()
     while map.running:
         try:
-            time.sleep(1)
+            map.get_tagged_points()
+            time.sleep(0.01)
         except KeyboardInterrupt:
             map.stop()
             break
