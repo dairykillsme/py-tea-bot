@@ -1,3 +1,4 @@
-opencv-contrib-python
 numpy
 matplotlib
+adafruit-circuitpython-motorkit
+opencv-contrib-python
