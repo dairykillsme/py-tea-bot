@@ -1,3 +1,6 @@
 opencv-contrib-python
 numpy
 matplotlib
+csv
+pandas
+shapely

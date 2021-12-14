@@ -5,12 +5,25 @@ import matplotlib.patches as patches
 import csv
 import pandas as pd
 from shapely import geometry
+from shapely.ops import nearest_points
 
 '''
 # TODO:
+    RRT
+        add smoothing
+        initial check for start/goal in obstacle
+        flag for when no path found
+    fix case 1 narrow obstacle thing where arcs intersect
+        look at if the two semicircles intersect
+            if they do, then make a thin line between the two intersections
+                this way you don't really lose any area of workspace BUT
+                you still keep the path planner from sending the robot through the obstacle
+        OR maybe split it into a left right case like case 2
+
+
+
     add mode to getXY
     case 2 (generic/numeric)
-    case 3 (generic/numeric)
     look at unions
         https://shapely.readthedocs.io/en/stable/manual.html#efficient-unions
     test obstacle for what case it is
@@ -379,14 +392,14 @@ class SCARA(object):
         # angle to centroid
         thetao = np.arctan2((centroid[1]-self.A[1]),(centroid[0]-self.A[0]))
 
-        # make line string of arm thru centroid
+        # arm extended straight thru centroid
         theta = np.zeros([1,2])
         theta[0,0] = thetao
         theta[0,1] = np.pi
 
         #sweep size
         sweep_deg = .1
-        sweep_rad = sweep_deg/180*np.pi
+        sweep_rad = sweep_deg/180*np.pi # in radians
 
         # sweep + to get alpha_plus
         intersect = True
@@ -458,17 +471,370 @@ class SCARA(object):
 
         projection = geometry.Polygon(points)
 
-        self.plot_poly(projection)
-        self.plot_poly(obstacle)
+        self.plot_poly(projection,'g')
+        self.plot_poly(obstacle,'r')
         # plt.plot(self.A[0],self.A[1],'ro')
         plt.show()
 
-        return projection,arm
+        return projection
 
-    def case2_proj_GN(self,obstacle):
+    def case2_proj_GN(self,obstacle,obs_dir):
+        # get centroid of obstacle
+        centroid = list(obstacle.centroid.coords)[0]
+        # angle to centroid
+        thetao = np.arctan2((centroid[1]-self.A[1]),(centroid[0]-self.A[0]))
+
+        # first link thru centroid, second link fully closed
+        theta = np.zeros([1,2])
+        theta[0,0] = thetao
+        theta[0,1] = 0
+        arm = self.angle2arm_poly(theta)
+
+        #sweep size
+        sweep_deg = .1
+        sweep_rad = sweep_deg/180*np.pi # in radians
 
 
-        return
+        if obs_dir == 'right':
+            # first link thru centroid, second link fully closed
+            theta[0,1] = 0
+            arm = self.angle2arm_poly(theta)
+
+            ##################
+            # make segment 1 #
+            ##################
+
+            # sweep theta 1 away from centroid until no longer intersecting
+            while arm.intersects(obstacle):
+                theta[0,0] = theta[0,0] + sweep_rad
+                arm = self.angle2arm_poly(theta)
+
+            alpha_plus = theta[0,0]
+
+
+            # need to get back into intersection
+            while not arm.intersects(obstacle):
+                theta[0,1] = theta[0,1] + sweep_rad
+                arm = self.angle2arm_poly(theta)
+
+            # now sweep thru obstacle until not intersecting
+            while arm.intersects(obstacle):
+                theta[0,1] = theta[0,1] + sweep_rad
+                arm = self.angle2arm_poly(theta)
+
+            # get intersection - to see why you need this, comment out
+            # lines 531 and 532 where intersect is inserted into x,y:
+            #   x = np.insert(x, 0, intersection[0])
+            #   y = np.insert(y, 0, intersection[1])
+            # and run following code:
+            #   scara = lib.SCARA([[0,0],3,1])
+            #   points = [(0,2.75),(.5,2.25),(.5,2.75)]
+            #   obs = geometry.Polygon(points)
+            #   projection = scara.case2_proj_GN(obs,'right')
+            intersection = list(list(nearest_points(arm,obstacle)[0].coords)[0])
+
+            B,C = self.getXY(theta,'+')
+            B = B.tolist()[0]
+
+            angle_lo = theta[0,0]+theta[0,1]-np.pi
+            angle_hi = theta[0,0]
+            x,y = self.make_arc(B[0],B[1],self.r2,[angle_lo, angle_hi],100)
+
+            # append intersection to beginning of x,y List
+            x = np.insert(x, 0, intersection[0])
+            y = np.insert(y, 0, intersection[1])
+
+            seg1 = list(zip(x,y))
+
+            ######################
+            # make easy segments #
+            ######################
+            angle_left = alpha_plus
+            buffer = 5/180*np.pi
+            angle_spread = np.arcsin(self.r2/self.r1) + buffer
+            angle_right = alpha_plus - angle_spread
+
+            x,y = self.make_arc(self.A[0],self.A[1],self.r1+self.r2,[angle_left,angle_right],100)
+            seg2 = list(zip(x,y))
+
+            x,y = self.make_arc(self.A[0],self.A[1],self.r1-self.r2,[angle_right,angle_left],100)
+            seg3 = list(zip(x,y))
+
+            ##################
+            # make segment 4 #
+            ##################
+            theta[0,:] = [alpha_plus, 0]
+            arm = self.angle2arm_poly(theta)
+
+            seg4= []
+
+            while theta[0,1] <= np.pi:
+                while not arm.intersects(obstacle):
+                    theta[0,1] = theta[0,1] + sweep_rad
+                    arm = self.angle2arm_poly(theta)
+                    if theta[0,1] > np.pi:
+                        break
+                B,C = self.getXY(theta,'+')
+                seg4.append(C.tolist()[0])
+                arm = self.angle2arm_poly(theta)
+
+                while arm.intersects(obstacle):
+                    theta[0,0] = theta[0,0] + sweep_rad
+                    arm = self.angle2arm_poly(theta)
+
+        elif obs_dir == 'left':
+            # first link thru centroid, second link fully closed
+            theta[0,1] = 2*np.pi
+            arm = self.angle2arm_poly(theta)
+
+            ##################
+            # make segment 1 #
+            ##################
+
+            # sweep theta 1 away from centroid until no longer intersecting
+            while arm.intersects(obstacle):
+                theta[0,0] = theta[0,0] - sweep_rad
+                arm = self.angle2arm_poly(theta)
+
+            alpha_minus = theta[0,0]
+
+
+            # need to get back into intersection
+            while not arm.intersects(obstacle):
+                theta[0,1] = theta[0,1] - sweep_rad
+                arm = self.angle2arm_poly(theta)
+
+            # now sweep thru obstacle until not intersecting
+            while arm.intersects(obstacle):
+                theta[0,1] = theta[0,1] - sweep_rad
+                arm = self.angle2arm_poly(theta)
+
+            # get intersection - to see why you need this, comment out
+            # lines 618 and 619 where intersect is inserted into x,y:
+            #   x = np.insert(x, 0, intersection[0])
+            #   y = np.insert(y, 0, intersection[1])
+            # and run following code:
+            #   scara = lib.SCARA([[0,0],3,1])
+            #   points = [(0,2.75),(.5,2.25),(.5,2.75)]
+            #   obs = geometry.Polygon(points)
+            #   projection = scara.case2_proj_GN(obs,'left')
+            intersection = list(list(nearest_points(arm,obstacle)[0].coords)[0])
+
+            B,C = self.getXY(theta,'-')
+            B = B.tolist()[0]
+
+            angle_lo = theta[0,0] + theta[0,1] - np.pi
+            angle_hi = theta[0,0]
+            x,y = self.make_arc(B[0],B[1],self.r2,[angle_lo, angle_hi],100)
+
+            # append intersection to beginning of x,y List
+            x = np.insert(x, 0, intersection[0])
+            y = np.insert(y, 0, intersection[1])
+
+            seg1 = list(zip(x,y))
+
+            ######################
+            # make easy segments #
+            ######################
+            angle_right = alpha_minus
+            buffer = 5/180*np.pi
+            angle_spread = np.arcsin(self.r2/self.r1) + buffer
+            angle_left = alpha_minus + angle_spread
+
+            x,y = self.make_arc(self.A[0],self.A[1],self.r1+self.r2,[angle_right,angle_left],100)
+            seg2 = list(zip(x,y))
+
+            x,y = self.make_arc(self.A[0],self.A[1],self.r1-self.r2,[angle_left,angle_right],100)
+            seg3 = list(zip(x,y))
+
+            ##################
+            # make segment 4 #
+            ##################
+            theta[0,:] = [alpha_minus, 0]
+            arm = self.angle2arm_poly(theta)
+
+            seg4= []
+
+            while theta[0,1] >= -np.pi:
+                while not arm.intersects(obstacle):
+                    theta[0,1] = theta[0,1] - sweep_rad
+                    arm = self.angle2arm_poly(theta)
+                    if theta[0,1] < -np.pi:
+                        break
+                B,C = self.getXY(theta,'+')
+                seg4.append(C.tolist()[0])
+                arm = self.angle2arm_poly(theta)
+
+                while arm.intersects(obstacle):
+                    theta[0,0] = theta[0,0] - sweep_rad
+                    arm = self.angle2arm_poly(theta)
+
+        seg4 = seg4[:-1]
+
+        seg1 = np.asarray(seg1)
+        seg2 = np.asarray(seg2)
+        seg3 = np.asarray(seg3)
+        seg4 = np.asarray(seg4)
+
+        loop = np.concatenate((seg1,seg2,seg3,seg4))
+        loop = np.asarray(loop)
+
+        projection = geometry.Polygon(loop)
+
+        self.plot_poly(obstacle,'r')
+        self.plot_poly(projection,'g')
+        plt.show()
+
+        return projection
+
+    def case3_proj_GN(self,obstacle):
+        # get centroid of obstacle as list of x,y
+        centroid = list(list(obstacle.centroid.coords)[0])
+        # angle to centroid
+        thetao = np.arctan2((centroid[1]-self.A[1]),(centroid[0]-self.A[0]))
+
+        # first link thru centroid, second link fully extended
+        theta = np.zeros([1,2])
+        theta[0,0] = thetao
+        theta[0,1] = np.pi
+
+        #sweep size
+        sweep_deg = .1
+        sweep_rad = sweep_deg/180*np.pi # in radians
+
+        #############################
+        # plus (+) side of obstacle #
+        #############################
+        seg1 = []
+        arm = self.angle2arm_poly(theta)
+
+        # while arm intersects, sweep arm out of obstacle
+        # stopping once you DONT intersect
+        while arm.intersects(obstacle):
+            theta[0,0] = theta[0,0] + sweep_rad
+            arm = self.angle2arm_poly(theta)
+
+        # add to segment 1
+        B,C = self.getXY(theta,'+')
+        seg1.append(C.tolist()[0])
+
+        # capture alpha_plus for later
+        alpha_plus = theta[0,0]
+
+        while theta[0,1] >=0: # stay in loop until arm has closed, at which point obstacle is cleared
+
+            # while arm DOESNT intersect, sweep r2 toward obstacle
+            # stop once arm intersects obstacle
+            while not arm.intersects(obstacle):
+                # increment theta2
+                theta[0,1] = theta[0,1] - sweep_rad
+                if theta[0,1] < 0:
+                    # if arm is closed, break out of loop (obstacle cleared)
+                    break
+                arm = self.angle2arm_poly(theta)
+
+            # add to segment 1
+            B,C = self.getXY(theta,'+')
+            seg1.append(C.tolist()[0])
+
+            # update arm
+            arm = self.angle2arm_poly(theta)
+
+            # while arm instersects, sweep r1 away
+            # stop once arm doesn't intersect
+            while arm.intersects(obstacle):
+                # increment theta1 and update arm
+                theta[0,0] = theta[0,0] + sweep_rad
+                arm = self.angle2arm_poly(theta)
+
+
+        # algorithm will include final point as the arm fully closed and away from obstacle
+        # we can just remove this value from our list
+        seg1 = seg1[:-1]
+
+        # once segment is complete, convert to numpy array
+        seg1 = np.asarray(seg1)
+
+        # ##############################
+        # # minus (-) side of obstacle #
+        # ##############################
+        seg3 = []
+
+        theta[0,0] = thetao
+        theta[0,1] = np.pi
+        arm = self.angle2arm_poly(theta)
+
+        # while arm intersects, sweep arm out of obstacle
+        # stopping once you DONT intersect
+        while arm.intersects(obstacle):
+            theta[0,0] = theta[0,0] - sweep_rad
+            arm = self.angle2arm_poly(theta)
+
+        # add to segment 1
+        B,C = self.getXY(theta,'-')
+        seg3.append(C.tolist()[0])
+
+        # capture alpha_minus for later
+        alpha_minus = theta[0,0]
+
+        while theta[0,1] <= 2*np.pi:
+            # while arm DOESNT intersect, sweep arm toward obstacle
+            # stop once arm intersects obstacle
+
+            while not arm.intersects(obstacle):
+                theta[0,1] = theta[0,1] + sweep_rad
+                if theta[0,1] > 2*np.pi:
+                    break
+                arm = self.angle2arm_poly(theta)
+
+            # add to segment 1
+            B,C = self.getXY(theta,'+')
+            seg3.append(C.tolist()[0])
+
+            arm = self.angle2arm_poly(theta)
+
+            # update theta1 and arm
+            while arm.intersects(obstacle):
+                theta[0,0] = theta[0,0] - sweep_rad
+                arm = self.angle2arm_poly(theta)
+
+
+        # algorithm will include final point as the arm fully closed and away from obstacle
+        # we can just remove this value from our list
+        seg3= seg3[:-1]
+
+        # once segment is complete, convert to numpy array
+        seg3 = np.asarray(seg3)
+
+
+        # build arc from seg 1 to seg 3
+        x,y = self.make_arc(self.A[0],self.A[1],self.r1+self.r2,[alpha_plus,alpha_minus],100)
+        seg2 = list(zip(x,y))
+        seg2 = np.asarray(seg2)
+
+        #####################################################
+        # put all segments into closed loop to make polygon #
+        #####################################################
+
+        # need to reverse order of seg1 so that its points are ordered
+        #   clockwise around loop
+        seg1 = np.flip(seg1,axis=0)
+
+        # need to encode centroid as a numpy array point
+        centroid_np = np.zeros([1,2])
+        centroid_np[0] = centroid
+
+        loop =  np.concatenate((seg1,seg2,seg3,centroid_np))
+        loop = np.asarray(loop)
+
+        projection = geometry.Polygon(loop)
+
+        # self.plot_arm(arm)
+        self.plot_poly(obstacle,'r')
+        self.plot_poly(projection,'g')
+        plt.show()
+
+        return projection
 
     def make_arc(self,cx,cy,radius,angle_bounds,n):
         '''
@@ -487,10 +853,10 @@ class SCARA(object):
 
         return x,y
 
-    def plot_poly(self, poly):
+    def plot_poly(self, poly, color):
         x,y = poly.exterior.xy                      # get x,y vertices
-        plt.fill(x,y,alpha=.5,fc='r',ec='none')     # polygon fill
-        plt.plot(*poly.exterior.xy,'r')             # polygon border
+        plt.fill(x,y,alpha=.3,fc=color,ec='none')     # polygon fill
+        plt.plot(*poly.exterior.xy,color)             # polygon border
 
         return
 
@@ -518,42 +884,208 @@ class SCARA(object):
 
         return arm
 
+    def RRT(self, start, goal, obstacle_list, max_iteration, max_distance):
+        # for simplicity, use rejection sampling:
+        #   generate points in square that contains workspace
+        #   if point is in workspace, continue with RRT
+        #   if point not in workspace, generate new point
+        # https://www.youtube.com/watch?v=4y_nmpv-9lI&ab_channel=nubDotDev
+        #   since we are looking at annulus, different sampling method might
+        #   be faster, but its not likely bc rejections sampling is easiest computation
+
+        # generate possible x and y values
+        n = 100
+        x_vals = np.linspace(self.A[0]-self.r1-self.r2, self.A[0]+self.r1+self.r2, n)
+        y_vals = np.linspace(self.A[1]-self.r1-self.r2, self.A[1]+self.r1+self.r2, n)
+
+        # to keep points from projecting into the center region, make it an obstacle
+        region_A = geometry.Point(self.A[0],self.A[1]).buffer(self.r1-self.r2)
+        obstacle_list.append(region_A)
+
+        ###############################
+        # parameters and book keeping #
+        ###############################
+        goal_radius = 0.25
+        num_nodes = 1 # how many nodes have been added to tree
+        tree = np.zeros([max_iteration, 3])
+        tree[0,:] = [start[0],start[1],0]
+        # tree columns are:
+        #     1: x coord of node
+        #     2: y coord of node
+        #     3: index of parent node
+
+        # debug
+        rndpts = np.zeros([max_iteration,3])
+
+        for k in range(max_iteration):
+            x = x_vals[np.random.randint(0,n)]
+            y = y_vals[np.random.randint(0,n)]
+
+            ########################
+            # test if in workspace #
+            ########################
+            # radial dist to A
+            r = ((x-self.A[0])**2 + (y-self.A[1])**2)**0.5
+            # if r not within radii of annulus, then continue to next loop iteration
+            if (r > self.r1+self.r2) or (r < self.r1-self.r2):
+                continue
+
+            # debug
+            rndpts[k,0] = x
+            rndpts[k,1] = y
+            rndpts[k,2] = r
+
+
+            #####################
+            # find closest node #
+            #####################
+            all_dif = tree[0:num_nodes,0:2] - np.array([x,y])
+            all_dist = np.sum(np.abs(all_dif)**2,axis=-1)**(1./2) # distances to all nodes
+            close_index = np.argmin(all_dist) # index of closest node
+            close_dist = all_dist[close_index] # distance of closest node
+
+            # print([x,y])
+            # print(tree[0:num_nodes,0:2])
+            # print(all_dif)
+            # print(all_dist)
+            # print(close_index)
+            # print(close_dist)
+            # input()
+
+            ##################################
+            # project node closer if too far #
+            ##################################
+            if close_dist > max_distance:
+                vec = np.array([x,y]) - tree[close_index,0:2]           # vec from node to closest node on tree
+                unit = vec / (np.sum(np.abs(vec)**2,axis=-1)**(1./2))   # unit vec from node to closest node on tree
+                vec_prime = unit*max_distance                           # vec scaled by max dist
+                x = tree[close_index,0] + vec_prime[0]                  # updated node, max dist away
+                y = tree[close_index,1] + vec_prime[1]
+
+            ########################################################
+            # check new segment for intersection with any obstacle #
+            ########################################################
+            # segment between new candidate node and closest node
+            segment = geometry.LineString([tree[close_index,0:2].tolist(), [x,y]])
+
+            # initialize zeros for intersect flags
+            intersect_flags = np.zeros(len(obstacle_list))
+
+            # check intersection with every obstacle
+            for j,obs in enumerate(obstacle_list):
+                if obs.intersects(segment):
+                    intersect_flags[j] = 1
+
+            # if no intersections, then add node to tree
+            if np.sum(intersect_flags) == 0:
+                tree[num_nodes,0] = x
+                tree[num_nodes,1] = y
+                tree[num_nodes,2] = close_index
+                num_nodes = num_nodes + 1
+
+                goal_vec = np.array([x,y]) - np.array(goal)
+                dist2goal = (np.sum(np.abs(goal_vec)**2,axis=-1)**(1./2))
+                if dist2goal <= goal_radius:
+                    print('path found at iteration',k)
+                    break
+
+            # flag for no path found
+            if k == max(range(max_iteration))-1:
+                print('max iteration reached. no path found')
+                break
+
+        # ax,ay = self.make_arc(0,0,self.r1-self.r2,[0,2*np.pi],200)
+        # bx,by = self.make_arc(0,0,self.r1,[0,2*np.pi],200)
+        # cx,cy = self.make_arc(0,0,self.r1+self.r2,[0,2*np.pi],200)
+        # plt.plot(ax,ay)
+        # plt.plot(bx,by)
+        # plt.plot(cx,cy)
+        # plt.plot(rndpts[:,0],rndpts[:,1],'r.')
+        # plt.show()
+
+        ###########################
+        # trace back optimal path #
+        ###########################
+        optimal_path = np.empty((0,2))
+        parent = tree[num_nodes-1,:]
+
+        while not parent[2] == 0:
+            # while parent isn't first parent, append optimal path
+            optimal_path = np.append(optimal_path,[parent[0:2]],axis=0)
+
+            # print(optimal_path)
+            # input()
+
+            # get next parent
+            parent = tree[int(parent[2]),:]
+
+        # path is traced from finish back to start, so need to flip
+        optimal_path = np.flip(optimal_path,axis=0)
+
+        # path does not include start and goal, so append these
+        optimal_path = np.vstack([start,optimal_path])
+        optimal_path = np.vstack([optimal_path,goal])
+
+        ax,ay = self.make_arc(0,0,self.r1-self.r2,[0,2*np.pi],200)
+        bx,by = self.make_arc(0,0,self.r1,[0,2*np.pi],200)
+        cx,cy = self.make_arc(0,0,self.r1+self.r2,[0,2*np.pi],200)
+
+        # plt.plot(rndpts[:,0],rndpts[:,1],'b.',alpha=0.1)
+
+        plt.plot(ax,ay)
+        plt.plot(bx,by)
+        plt.plot(cx,cy)
+
+        plt.plot(optimal_path[:,0],optimal_path[:,1],'r',linewidth=3)
+        plt.plot(start[0],start[1],'go')
+        plt.plot(goal[0],goal[1],'ro')
+
+        plt.show()
+
+        return optimal_path
+
+    def path_smoother(self,path,obstacle_list,threshold):
+        ################################
+        # split path into smaller bits #
+        ################################
+
+
+
+        return new_path
+
 if __name__ == "__main__":
 
     '''
     test cases:
-    1   animate path
+    1   animate path ** REQUIRES CONTROLLER.CSV
     2   animate path
     3   animate path
     4   animate path
     5   kinematics output against hand calcs
-    6   case 1 circular obstacle projection
+    6   case 1 circular obstacle projection (analytical)
     7   forward kinematics
-    8   case 1 generic / numeric
+    8   case 1 (generic/numeric)
+    9   case 3 (generic/numeric)
+    10  case 2 left and right (generic/numeric)
+    11  all cases
+    12  rrt
     '''
 
-    test = 1
+    test = 12
 
     if test == 1:
         sys = SCARA([[1,1],5,8])
 
-        # numPts = 25
-        # x = np.linspace(2,3,numPts)
-        # y = np.linspace(2,5,numPts)
-        # xy = np.zeros([numPts,2])
-        # xy[:,0] = x
-        # xy[:,1] = y
-
-        xy = sys.xy_CSVToArray('controller.csv')
-
-        theta = sys.getMotorAngles(xy, '+')
-
-        sys.animatePath(theta, xy,
-                        frameDelay=20,
-                        width = 2,
-                        save=False,
-                        ghost=True,
-                        draw=True)
+        # xy = sys.xy_CSVToArray('controller.csv')
+        #
+        # theta = sys.getMotorAngles(xy, '+')
+        #
+        # sys.animatePath(theta, xy,
+        #                 frameDelay=20,
+        #                 width = 2,
+        #                 save=False,
+        #                 ghost=True,
+        #                 draw=True)
 
     elif test == 2:
         sys = SCARA([[0,0],1,1])
@@ -687,3 +1219,88 @@ if __name__ == "__main__":
         points = [(0,1),(1,2),(-.5,2)]
         box = geometry.Polygon(points)
         projection = scara.case1_proj_GN(box)
+    elif test == 9:
+        scara = SCARA([[0,0],3,1])
+
+        points = [(0,3.75),(.5,3.25),(.5,3.75)]
+        obs = geometry.Polygon(points)
+        projection = scara.case3_proj_GN(obs)
+
+        points = [(0,3.25),(.5,3.25),(.5,3.75)]
+        obs = geometry.Polygon(points)
+        projection = scara.case3_proj_GN(obs)
+
+        points = [(0,3.25),(.5,3.25),(.5,3.5),(.35,3.5),(.5,3.75)]
+        obs = geometry.Polygon(points)
+        projection = scara.case3_proj_GN(obs)
+    elif test == 10:
+        scara = SCARA([[0,0],3,1])
+
+        points = [(0,2.75),(.5,2.25),(.5,2.75)]
+        obs = geometry.Polygon(points)
+        projection = scara.case2_proj_GN(obs,'right')
+
+        points = [(0,2.75),(-.5,2.25),(-.5,2.75)]
+        obs = geometry.Polygon(points)
+        projection = scara.case2_proj_GN(obs,'left')
+    elif test == 11:
+        scara = SCARA([[0,0],10,8])
+
+        o1 = [(-1.5,0.5),(-1.5,1),(-.5,1),(-.5,.5)]
+        o2 = [(5,-1),(5,1),(8,1),(8,-1)]
+        o3 = [(4,12),(4,15),(6,15),(6,13),(10,9),(9,8),(5,12)]
+
+        obs1 = geometry.Polygon(o1)
+        obs2 = geometry.Polygon(o2)
+        obs3 = geometry.Polygon(o3)
+
+        proj1 = scara.case1_proj_GN(obs1)
+        proj2 = scara.case2_proj_GN(obs2,'right')
+        proj3 = scara.case3_proj_GN(obs3)
+
+        scara.plot_poly(obs1,'r')
+        scara.plot_poly(obs2,'r')
+        scara.plot_poly(obs3,'r')
+
+        scara.plot_poly(proj1,'g')
+        scara.plot_poly(proj2,'g')
+        scara.plot_poly(proj3,'g')
+
+        ax,ay = scara.make_arc(0,0,scara.r1-scara.r2,[0,2*np.pi],200)
+        bx,by = scara.make_arc(0,0,scara.r1,[0,2*np.pi],200)
+        cx,cy = scara.make_arc(0,0,scara.r1+scara.r2,[0,2*np.pi],200)
+
+        plt.plot(ax,ay)
+        plt.plot(bx,by)
+        plt.plot(cx,cy)
+
+        plt.show()
+    elif test == 12:
+        scara = SCARA([[0,0],10,8])
+
+        o2 = [(5,-1),(5,1),(8,1),(8,-1)]
+        o3 = [(0,11),(5,15),(6,15),(6,13),(10,9),(9,8),(5,12)]
+
+        obs2 = geometry.Polygon(o2)
+        obs3 = geometry.Polygon(o3)
+
+        proj2 = scara.case2_proj_GN(obs2,'right')
+        proj3 = scara.case3_proj_GN(obs3)
+
+        scara.plot_poly(obs2,'r')
+        scara.plot_poly(obs3,'r')
+
+        scara.plot_poly(proj2,'g')
+        scara.plot_poly(proj3,'g')
+
+        ax,ay = scara.make_arc(0,0,scara.r1-scara.r2,[0,2*np.pi],200)
+        bx,by = scara.make_arc(0,0,scara.r1,[0,2*np.pi],200)
+        cx,cy = scara.make_arc(0,0,scara.r1+scara.r2,[0,2*np.pi],200)
+
+        # plt.plot(ax,ay)
+        # plt.plot(bx,by)
+        # plt.plot(cx,cy)
+
+        obstacle_list = [obs2,obs3,proj2,proj3]
+
+        path = scara.RRT([3,15],[7,-5],obstacle_list,5000,1)
