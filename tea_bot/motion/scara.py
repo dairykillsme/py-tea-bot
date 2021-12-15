@@ -52,6 +52,7 @@ class SCARA(object):
         # r1 is proximal arm length (motor to motor) (shoulder to elbow)
         # r2 is distal arm length (motor to EE) (elbow to hand)
         [self.A, self.r1, self.r2] = param
+        self.theta = np.array([[0,0]])
 
     def getMotorAngles(self, xy_array, mode):
         '''
@@ -363,13 +364,14 @@ class SCARA(object):
 
         return projection
 
-    def case1_proj_GN(self,obstacle):
+    def case1_proj_GN(self,obstacle,obs_dir):
         '''
         numerically compute projection a case 1 obstacle
 
         input:
             obstacle: [shapely polygon object]
                 obstacle to project
+            obs_dir: 'left', 'right', 'both'
 
         output:
             projection: [shapely polygon object]
@@ -430,6 +432,15 @@ class SCARA(object):
         n = 100 # number of points in each segment
         beta =  np.pi - alpha_plus
 
+        # if doing projection directionally, need to buffer the edge
+        buffer = 1/180*np.pi
+        spread = np.arcsin(self.r2/self.r1) + buffer
+        if obs_dir == 'left':
+            alpha_plus = alpha_minus + spread
+        elif obs_dir == 'right':
+            alpha_minus = alpha_plus - spread
+
+
         # segment 1
         cx1 = self.r1*np.cos(alpha_plus) + self.A[0]
         cy1 = self.r1*np.sin(alpha_plus) + self.A[1]
@@ -463,8 +474,15 @@ class SCARA(object):
         [s4x, s4y] = self.make_arc(cx4,cy4,radius4,angles4,n)
 
         # merge x and y
-        x = np.concatenate((s1x,s2x,s3x,s4x))
-        y = np.concatenate((s1y,s2y,s3y,s4y))
+        if obs_dir == 'both':
+            x = np.concatenate((s1x,s2x,s3x,s4x))
+            y = np.concatenate((s1y,s2y,s3y,s4y))
+        elif obs_dir == 'left':
+            x = np.concatenate((s2x,s3x,s4x))
+            y = np.concatenate((s2y,s3y,s4y))
+        elif obs_dir == 'right':
+            x = np.concatenate((s1x,s2x,s4x))
+            y = np.concatenate((s1y,s2y,s4y))
 
         # convert to list of ordered pairs
         points = list(zip(x,y))
@@ -867,7 +885,12 @@ class SCARA(object):
         # plt.show()
 
         return
-
+    def auto_plot_arm(self):
+        arm = self.angle2arm_poly(self.theta)
+        x,y = arm.xy
+        plt.plot(x,y,'o',color='#999999')
+        plt.plot(*arm.xy,'b')
+        return
     def angle2arm_poly(self,angles):
         '''
         make a linestring object of arm from pair of angles
@@ -884,6 +907,15 @@ class SCARA(object):
 
         return arm
 
+    def plot_workspace(self):
+        ax,ay = self.make_arc(0,0,self.r1-self.r2,[0,2*np.pi],200)
+        bx,by = self.make_arc(0,0,self.r1,[0,2*np.pi],200)
+        cx,cy = self.make_arc(0,0,self.r1+self.r2,[0,2*np.pi],200)
+
+        plt.plot(ax,ay)
+        plt.plot(bx,by)
+        plt.plot(cx,cy)
+        return
     def RRT(self, start, goal, obstacle_list, max_iteration, max_distance):
         # for simplicity, use rejection sampling:
         #   generate points in square that contains workspace
@@ -1053,6 +1085,85 @@ class SCARA(object):
 
         return new_path
 
+    def obstacle_analyzer(self, obstacle_list):
+        obs_dir_list = []
+        obs_case_list = []
+
+        for obs in obstacle_list:
+            ##############################
+            # get parameters of obstacle #
+            ##############################
+            # get centroid of obstacle
+            centroid = list(obs.centroid.coords)[0]
+            # angle to centroid
+            thetao = np.arctan2((centroid[1]-self.A[1]),(centroid[0]-self.A[0]))
+            # distance from centroid to first motor
+            r = ((centroid[1]-self.A[1])**2 + (centroid[0]-self.A[0])**2)**0.5
+
+            #############################
+            # classify case of osbtacle #
+            #############################
+            # assuming obstacles do not cross regions....
+            if r <= self.r1-self.r2:
+                case = 1
+            elif r <= self.r1:
+                case = 2
+            elif r <= self.r1+self.r2:
+                case = 3
+            else:
+                case = 999
+                print('obstacle out of range!')
+
+            ##################################
+            # classify direction of obstacle #
+            ##################################
+            # "unvwind" angles so they are bounded between 0 and 2pi
+            theta1 = self.theta[0,0] % (2*np.pi)
+            thetao = thetao % (2*np.pi)
+
+            angle_dif = theta1 - thetao
+
+            if angle_dif < -np.pi:
+                dir = 'right'
+            elif angle_dif < 0:
+                dir = 'left'
+            elif angle_dif > np.pi:
+                dir = 'left'
+            elif angle_dif > 0:
+                dir = 'right'
+            else:
+                dir = 'UNKNOWN'
+                print('uh oh cannot find direction of obstacle')
+
+            ###################
+            # append to lists #
+            ###################
+            obs_dir_list.append(dir)
+            obs_case_list.append(case)
+
+        return obs_dir_list, obs_case_list
+
+    def obstacle_projector(self, obstacle_list):
+        obs_dir_list, obs_case_list = self.obstacle_analyzer(obstacle_list)
+
+        projection_list = []
+
+        for k,obs in enumerate(obstacle_list):
+            case = obs_case_list[k]
+            dir = obs_dir_list[k]
+            if case == 1:
+                projection = self.case1_proj_GN(obs, dir)
+            elif case == 2:
+                projection = self.case2_proj_GN(obs, dir)
+            elif case == 3:
+                projection = self.case3_proj_GN(obs)
+            else:
+                projection = []
+                print('problem with case class. no projection made')
+            projection_list.append(projection)
+
+        return projection_list
+
 if __name__ == "__main__":
 
     '''
@@ -1069,9 +1180,11 @@ if __name__ == "__main__":
     10  case 2 left and right (generic/numeric)
     11  all cases
     12  rrt
+    13  one sided case 1
+    14  obstacale analyzer and projector
     '''
 
-    test = 12
+    test = 14
 
     if test == 1:
         sys = SCARA([[1,1],5,8])
@@ -1206,19 +1319,19 @@ if __name__ == "__main__":
 
         points = [(.5,1.5),(-.5,1.5),(-.5,.5),(.5,.5)]
         box = geometry.Polygon(points)
-        projection = scara.case1_proj_GN(box)
+        projection = scara.case1_proj_GN(box,'both')
 
         points = [(1,1.75),(0.5,2),(-.25,1),(-1,1.1),(-1.5,.5),(1.5,1)]
         box = geometry.Polygon(points)
-        projection = scara.case1_proj_GN(box)
+        projection = scara.case1_proj_GN(box,'both')
 
         points = [(0,1),(0,2),(-.25,1)]
         box = geometry.Polygon(points)
-        projection = scara.case1_proj_GN(box)
+        projection = scara.case1_proj_GN(box,'both')
 
         points = [(0,1),(1,2),(-.5,2)]
         box = geometry.Polygon(points)
-        projection = scara.case1_proj_GN(box)
+        projection = scara.case1_proj_GN(box,'both')
     elif test == 9:
         scara = SCARA([[0,0],3,1])
 
@@ -1254,7 +1367,7 @@ if __name__ == "__main__":
         obs2 = geometry.Polygon(o2)
         obs3 = geometry.Polygon(o3)
 
-        proj1 = scara.case1_proj_GN(obs1)
+        proj1 = scara.case1_proj_GN(obs1,'both')
         proj2 = scara.case2_proj_GN(obs2,'right')
         proj3 = scara.case3_proj_GN(obs3)
 
@@ -1304,3 +1417,42 @@ if __name__ == "__main__":
         obstacle_list = [obs2,obs3,proj2,proj3]
 
         path = scara.RRT([3,15],[7,-5],obstacle_list,5000,1)
+    elif test == 13:
+        scara = SCARA([[0,0],10,8])
+
+        o1 = [(-1.5,0.5),(-1.5,1),(-.5,1),(-.5,.5)]
+
+        obs1 = geometry.Polygon(o1)
+
+        proj1_L = scara.case1_proj_GN(obs1,'left')
+        proj1_R = scara.case1_proj_GN(obs1,'right')
+        proj1_B = scara.case1_proj_GN(obs1,'both')
+    elif test == 14:
+        scara = SCARA([[0,0],10,8])
+        theta = np.array([[100, 145]])
+        theta = theta/180*np.pi
+        scara.theta = theta
+        # scara.theta = theta
+
+        o1 = [(-1.5,0.5),(-1.5,1),(-.5,1),(-.5,.5)]
+        o2 = [(5,-1),(5,1),(8,1),(8,-1)]
+        o3 = [(4,12),(4,15),(6,15),(6,13),(10,9),(9,8),(5,12)]
+
+        obs1 = geometry.Polygon(o1)
+        obs2 = geometry.Polygon(o2)
+        obs3 = geometry.Polygon(o3)
+
+        obstacle_list = [obs1,obs2,obs3]
+
+        projection_list = scara.obstacle_projector(obstacle_list)
+
+        obs_and_proj = obstacle_list + projection_list
+
+        print('plotting obstacles and projections')
+        for poly in obs_and_proj:
+            scara.plot_poly(poly,'r')
+
+        scara.auto_plot_arm()
+        scara.plot_workspace()
+
+        plt.show()
