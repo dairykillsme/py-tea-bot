@@ -1148,9 +1148,21 @@ class SCARA(object):
 
         projection_list = []
 
-        for k,obs in enumerate(obstacle_list):
-            case = obs_case_list[k]
-            dir = obs_dir_list[k]
+        # for k,obs in enumerate(obstacle_list):
+        #     case = obs_case_list[k]
+        #     dir = obs_dir_list[k]
+        #     if case == 1:
+        #         projection = self.case1_proj_GN(obs, dir)
+        #     elif case == 2:
+        #         projection = self.case2_proj_GN(obs, dir)
+        #     elif case == 3:
+        #         projection = self.case3_proj_GN(obs)
+        #     else:
+        #         projection = []
+        #         print('problem with case class. no projection made')
+        #     projection_list.append(projection)
+
+        for obs, case, dir in zip(obstacle_list, obs_case_list, obs_dir_list):
             if case == 1:
                 projection = self.case1_proj_GN(obs, dir)
             elif case == 2:
@@ -1158,7 +1170,7 @@ class SCARA(object):
             elif case == 3:
                 projection = self.case3_proj_GN(obs)
             else:
-                projection = []
+                continue
                 print('problem with case class. no projection made')
             projection_list.append(projection)
 
@@ -1182,9 +1194,10 @@ if __name__ == "__main__":
     12  rrt
     13  one sided case 1
     14  obstacale analyzer and projector
+    15  obstacale analyzer and projector w/ out of bounds obstacle
     '''
 
-    test = 14
+    test = 15
 
     if test == 1:
         sys = SCARA([[1,1],5,8])
@@ -1429,6 +1442,7 @@ if __name__ == "__main__":
         proj1_B = scara.case1_proj_GN(obs1,'both')
     elif test == 14:
         scara = SCARA([[0,0],10,8])
+
         theta = np.array([[100, 145]])
         theta = theta/180*np.pi
         scara.theta = theta
@@ -1443,6 +1457,38 @@ if __name__ == "__main__":
         obs3 = geometry.Polygon(o3)
 
         obstacle_list = [obs1,obs2,obs3]
+
+        projection_list = scara.obstacle_projector(obstacle_list)
+
+        obs_and_proj = obstacle_list + projection_list
+
+        print('plotting obstacles and projections')
+        for poly in obs_and_proj:
+            scara.plot_poly(poly,'r')
+
+        scara.auto_plot_arm()
+        scara.plot_workspace()
+
+        plt.show()
+    elif test == 15:
+        scara = SCARA([[0,0],10,8])
+
+        theta = np.array([[100, 145]])
+        theta = theta/180*np.pi
+        scara.theta = theta
+        # scara.theta = theta
+
+        o1 = [(-1.5,0.5),(-1.5,1),(-.5,1),(-.5,.5)]
+        o2 = [(5,-1),(5,1),(8,1),(8,-1)]
+        o3 = [(4,12),(4,15),(6,15),(6,13),(10,9),(9,8),(5,12)]
+        o_oob = [(0,20),(5,20),(2.5,22.5)]
+
+        obs1 = geometry.Polygon(o1)
+        obs2 = geometry.Polygon(o2)
+        obs3 = geometry.Polygon(o3)
+        obs_oob = geometry.Polygon(o_oob)
+
+        obstacle_list = [obs1,obs2,obs3,obs_oob]
 
         projection_list = scara.obstacle_projector(obstacle_list)
 
