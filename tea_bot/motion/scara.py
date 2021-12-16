@@ -1097,6 +1097,33 @@ class SCARA(object):
 
         return projection_list
 
+    def find_mode_give_path(self, xy_path, obstacle_list):
+
+        theta_pos_mode = self.getMotorAngles(xy_path,'+')
+        theta_neg_mode = self.getMotorAngles(xy_path,'-')
+
+        # assume positive mode. if + doesn't work, flip to -
+        mode = '+'
+
+        intersect_flag = False
+
+        for angle_pair in theta_pos_mode:
+            arm = self.angle2arm_poly(angle_pair)
+            for obs in obstacle_list:
+                if obs.intersects(arm):
+                    intersect_flag = True
+                    break
+            if intersect_flag = True:
+                mode = '-'
+                break
+
+        if mode == '+':
+            motorAngles = theta_pos_mode
+        else:
+            motorAngles = theta_neg_mode
+
+        return motorAngles
+
 if __name__ == "__main__":
 
     '''
