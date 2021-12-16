@@ -88,6 +88,14 @@ class WorldMap:
         if ids is not None:
             if len(ids) == 7:
                 # Translate from camera space to world space
+                top_left = None
+                top_right = None
+                bottom_left = None
+                bottom_right = None
+                arm_base = None
+                arm_joint = None
+                arm_end_effector = None
+
                 for id_idx in range(0, len(ids)):
                     if ids[id_idx] == WorldMap.TOP_LEFT_ARUCO_ID:
                         top_left = np.mean(corners[id_idx], axis=1)

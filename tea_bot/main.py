@@ -27,8 +27,8 @@ def theta_from_map_points(end_effector_point, joint_point):
 
 if __name__ == "__main__":
     matplotlib.use('tkagg') # need to use different backend
-    scara = SCARA([[0,0], 9, 9])
-    map = WorldMap(CALIBRATION_FILE_DEFAULT, show_feed=True)
+    scara = SCARA([[0,0], 9.5, 9.5])
+    map = WorldMap(CALIBRATION_FILE_DEFAULT, show_feed=True, area_height=32, area_width=32)
     controller = MotionController()
     map.start()
 
@@ -44,7 +44,7 @@ if __name__ == "__main__":
 
     scara.auto_plot_arm()
 
-    path = scara.RRT([map.arm_end_effector.x, map.arm_end_effector.y], [map.goal.x, map.goal.y], obs_and_proj, 5000, 1)
+    path = scara.RRT([map.arm_end_effector.x, map.arm_end_effector.y], [map.goal.x, map.goal.y], obs_and_proj, 20000, 2)
     path_smoothed = scara.path_smoother(path, obs_and_proj, 1)
 
     plt.show()
