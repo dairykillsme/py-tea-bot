@@ -1,6 +1,8 @@
-opencv-contrib-python
 numpy
 matplotlib
-csv
+adafruit-circuitpython-motorkit
+opencv-contrib-python
+tk
 pandas
 shapely
+  
