@@ -2,11 +2,12 @@ import sys
 import time
 from threading import Thread
 import cv2 as cv
-from cv2 import aruco, imwrite, perspectiveTransform
+from cv2 import aruco, circle, imwrite, perspectiveTransform, sepFilter2D
 import matplotlib
 import numpy as np
 import matplotlib.pyplot as plt
 from shapely import geometry
+import shapely
 from shapely.geometry import geo
 from .calibration import CameraCalibration
 
@@ -44,13 +45,15 @@ class WorldMap:
         self.show_feed = show_feed
         self.sensing_thread = Thread(target=self.process_image)
         # Initialize position variables
-        self.top_left = np.zeros((1,2))
-        self.top_right = np.zeros((1,2))
-        self.bottom_left = np.zeros((1,2))
-        self.bottom_right = np.zeros((1,2))
-        self.arm_base = np.zeros((1,2))
-        self.arm_joint = np.zeros((1,2))
-        self.arm_end_effector = np.zeros((1,2))
+        self.top_left = geometry.Point([0,0])
+        self.top_right = geometry.Point([0,0])
+        self.bottom_left = geometry.Point([0,0])
+        self.bottom_right = geometry.Point([0,0])
+        self.arm_base = geometry.Point([0,0])
+        self.arm_joint = geometry.Point([0,0])
+        self.arm_end_effector = geometry.Point([0,0])
+        self.goal = geometry.Point([0,0])
+        self.goal_detected = False
         # Intialize some constants
         TOP_LEFT_SRC = [-area_width/2, area_height/2]
         TOP_RIGHT_SRC = [area_width/2, area_height/2]
@@ -157,10 +160,21 @@ class WorldMap:
                 self.top_left.within(polygon) or
                 self.top_right.within(polygon) or
                 self.bottom_left.within(polygon) or
-                self.bottom_right.within(polygon))
+                self.bottom_right.within(polygon) or 
+                self.goal.within(polygon))
     
     def find_goal(self, grayscale_img):
-        return
+        circles = cv.HoughCircles(grayscale_img, cv.HOUGH_GRADIENT, 1.5, 1, minRadius=1, maxRadius=100)
+        if circles is not None:
+            boundary = geometry.Polygon([self.top_left, self.top_right, self.bottom_right, self.bottom_left])
+            for circle in circles[0]:
+                xy = circle[0:2]
+                point = geometry.Point(self.perspective_transform_point([xy])[0])
+                if boundary.contains(point):
+                    self.goal = point
+                    return True
+        else:
+            return False
         
     def perspective_transform_point(self, point):
         q = np.dot(self.warp_mat, np.concatenate((point, [[1]]), axis=1).T)
@@ -195,6 +209,10 @@ class WorldMap:
             for polygon in self.obstacle_list:
                 x,y = polygon.exterior.xy
                 plt.fill(x,y,alpha=.3,fc='k',ec='none') 
+            
+            if self.goal_detected:
+                plt.plot(self.goal.x, self.goal.y, 'ro')
+                plt.text(self.goal.x, self.goal.y, 'GOAL')
 
             plt.axis('scaled')
             plt.xlim([-20, 20])
@@ -216,8 +234,9 @@ class WorldMap:
             aruco.refineDetectedMarkers(frame_undistorted_gray, self.board, corners, ids, rejected)
             markers_found = self.process_markers(corners, ids)
             if markers_found:
+                goal_found = self.find_goal(frame_undistorted_gray)
                 self.process_obstacles(frame_undistorted_gray)
-                self.find_goal(frame_undistorted_gray)
+                self.goal_detected = goal_found
 
             if self.show_feed:
                 im_with_aruco_board = frame_undistorted
@@ -239,7 +258,8 @@ def main(args):
     map.start()
     while map.running:
         try:
-            map.plot_tagged_points()
+            if map.goal_detected and map.ready:
+                map.plot_tagged_points()
             time.sleep(0.01)
         except KeyboardInterrupt:
             map.stop()
