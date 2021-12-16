@@ -1,4 +1,4 @@
 numpy
-matplotlib
+matplotlib==2.2.4
 adafruit-circuitpython-motorkit
 opencv-contrib-python
