@@ -4,34 +4,30 @@ from matplotlib import pyplot as plt
 import numpy as np
 
 scara = lib.SCARA([[0,0],10,8])
+theta = np.array([[100, 145]])
+theta = theta/180*np.pi
+scara.theta = theta
+# scara.theta = theta
 
+o1 = [(-1.5,0.5),(-1.5,1),(-.5,1),(-.5,.5)]
 o2 = [(5,-1),(5,1),(8,1),(8,-1)]
-o3 = [(0,11),(5,15),(6,15),(6,13),(10,9),(9,8),(5,12)]
+o3 = [(4,12),(4,15),(6,15),(6,13),(10,9),(9,8),(5,12)]
 
+obs1 = geometry.Polygon(o1)
 obs2 = geometry.Polygon(o2)
 obs3 = geometry.Polygon(o3)
 
-proj2 = scara.case2_proj_GN(obs2,'right')
-proj3 = scara.case3_proj_GN(obs3)
+obstacle_list = [obs1,obs2,obs3]
 
-scara.plot_poly(obs2,'r')
-scara.plot_poly(obs3,'r')
+projection_list = scara.obstacle_projector(obstacle_list)
 
-scara.plot_poly(proj2,'g')
-scara.plot_poly(proj3,'g')
+obs_and_proj = obstacle_list + projection_list
 
-ax,ay = scara.make_arc(0,0,scara.r1-scara.r2,[0,2*np.pi],200)
-bx,by = scara.make_arc(0,0,scara.r1,[0,2*np.pi],200)
-cx,cy = scara.make_arc(0,0,scara.r1+scara.r2,[0,2*np.pi],200)
+print('plotting obstacles and projections')
+for poly in obs_and_proj:
+    scara.plot_poly(poly,'r')
 
-# plt.plot(ax,ay)
-# plt.plot(bx,by)
-# plt.plot(cx,cy)
+scara.auto_plot_arm()
+scara.plot_workspace()
 
-obstacle_list = [obs2,obs3,proj2,proj3]
-
-path = scara.RRT([3,15],[7,-5],obstacle_list,15000,1)
-
-
-#scara = lib.SCARA([[-86.25,-2.5],100,100])
-#theta = scara.getMotorAngles(np.array([[-36.2,151.4],[-36.2,202],[138,137]]),'+')
+plt.show()
