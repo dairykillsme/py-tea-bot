@@ -6,7 +6,7 @@ from numpy.lib.function_base import angle
 
 from .vision.map import WorldMap, CALIBRATION_FILE_DEFAULT
 from .motion.scara import SCARA
-#from .motion.stepper_control import MotionController
+from .motion.stepper_control import MotionController
 
 def theta_from_map_points(end_effector_point, joint_point):
     # determine if we are in + or -
@@ -29,6 +29,7 @@ if __name__ == "__main__":
     matplotlib.use('tkagg') # need to use different backend
     scara = SCARA([[0,0], 9, 9])
     map = WorldMap(CALIBRATION_FILE_DEFAULT, show_feed=True)
+    controller = MotionController()
     map.start()
 
     #  wait until ready and goal detected
@@ -44,8 +45,16 @@ if __name__ == "__main__":
     scara.auto_plot_arm()
 
     path = scara.RRT([map.arm_end_effector.x, map.arm_end_effector.y], [map.goal.x, map.goal.y], obs_and_proj, 5000, 1)
+    path_smoothed = scara.path_smoother(path, obs_and_proj, 1)
 
-    theta_path = scara.find_mode_give_path(path, obs_and_proj)
-    print(theta_path)
+    plt.show()
+
+    theta_path = scara.find_mode_give_path(path_smoothed, obs_and_proj)
+    
+    for theata_pair in theta_path:
+        controller.set_theta1(theata_pair[0])
+        controller.set_theta2(theata_pair[1])
+        while not controller.tick(*theta_from_map_points(map.arm_end_effector, map.arm_joint)):
+            time.sleep(0.1)
 
     map.stop()

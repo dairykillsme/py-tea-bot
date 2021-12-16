@@ -103,6 +103,15 @@ class WorldMap:
                         arm_joint = np.mean(corners[id_idx], axis=1)
                     elif ids[id_idx] == WorldMap.ARM_END_EFFECTOR_ARUCO_ID:
                         arm_end_effector = np.mean(corners[id_idx], axis=1)
+                
+                if (top_left is None or
+                    top_right is None or
+                    bottom_left is None or
+                    bottom_right is None or
+                    arm_base is None or
+                    arm_joint is None or 
+                    arm_end_effector is None):
+                    return False
 
                 # find affine transform knowing the location of the source points
                 real_points = np.float32([top_left[0], top_right[0], bottom_left[0], bottom_right[0]])

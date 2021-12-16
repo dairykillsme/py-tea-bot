@@ -3,6 +3,7 @@ from matplotlib import pyplot as plt
 from matplotlib import animation
 import matplotlib.patches as patches
 import csv
+from numpy.lib.function_base import append
 import pandas as pd
 from shapely import geometry
 from shapely.ops import nearest_points
@@ -1007,18 +1008,80 @@ class SCARA(object):
         plt.plot(start[0],start[1],'go')
         plt.plot(goal[0],goal[1],'ro')
 
-        plt.show()
+        # plt.show()
 
         return optimal_path
 
     def path_smoother(self,path,obstacle_list,threshold):
+        # print(path)
+        # to keep points from projecting into the center region, make it an obstacle
+        region_A = geometry.Point(self.A[0],self.A[1]).buffer(self.r1-self.r2)
+        obstacle_list.append(region_A)
+
         ################################
         # split path into smaller bits #
         ################################
+        n_pts = np.shape(path)[0]
+        new_path=np.empty([1,2])
+        cost=[]
+        Ctmp=0
+        
+        for k in range(n_pts-1):
+            p1=path[k,:]
+            p2=path[k+1,:]
+            AB=p2-p1
+            ABunit=AB/np.linalg.norm(p1-p2)
+            numBreaks=np.floor(np.linalg.norm(p1-p2)/threshold)
 
+            for j in range(int(numBreaks)+1):
+                inBetweenPnt=p1+ABunit*j*threshold
+                new_path=np.append(new_path,[inBetweenPnt],axis=0)
+                cost=np.append(cost,[Ctmp+j*threshold],axis=0)
 
+            Ctmp=cost[-1]+np.linalg.norm(p2-new_path[-1,:])
 
-        return new_path
+        new_path=np.append(new_path,[p2],axis=0)
+        cost=np.append(cost,[Ctmp],axis=0)
+        new_path=np.delete(new_path,0,0)
+
+        ##############################################################
+        # pick 2 random points and see if connecting them is shorter #
+        ##############################################################
+
+        maxIter=200
+        for i in range(maxIter):
+            n_pts_new_path=np.shape(new_path)[0]
+            # print('num points in new path ',n_pts_new_path)
+
+            if n_pts_new_path<3:
+                print('yo mama so fat, sh-')
+                break
+        
+            rand_index1=np.random.randint(0,n_pts_new_path-1)
+            rand_index2=np.random.randint(rand_index1+1,n_pts_new_path)
+            rand_line= geometry.LineString([new_path[rand_index1,:].tolist(),new_path[rand_index2,:].tolist()])
+
+            flag=False
+            for obstacle in obstacle_list:
+                if obstacle.intersects(rand_line):
+                    flag= True
+                    break
+            if flag:
+                continue
+            cost_of_rand_line=cost[rand_index2]-cost[rand_index1]
+            if not rand_line.length>=cost_of_rand_line:
+                mommy = new_path[0:rand_index1+1,:]
+                daddy = new_path[rand_index2:n_pts_new_path,:]
+                new_path=np.concatenate((mommy,daddy),axis=0)
+
+                mommy_bucks = cost[0:rand_index1+1]
+                daddy_bucks = cost[rand_index2:n_pts_new_path]-cost_of_rand_line+rand_line.length
+                cost=np.concatenate((mommy_bucks,daddy_bucks),axis=0)
+        Smooth_path=new_path
+
+        #plottin' time
+        plt.plot(Smooth_path[:,0],Smooth_path[:,1],'k',linewidth=1)
+        return Smooth_path
 
     def obstacle_analyzer(self, obstacle_list):
         obs_dir_list = []
@@ -1147,7 +1210,7 @@ if __name__ == "__main__":
     16  find_mode_give_path
     '''
 
-    test = 15
+    test = 12
 
     if test == 1:
         sys = SCARA([[1,1],5,8])
@@ -1379,7 +1442,14 @@ if __name__ == "__main__":
 
         obstacle_list = [obs2,obs3,proj2,proj3]
 
-        path = scara.RRT([3,15],[7,-5],obstacle_list,5000,1)
+        path = scara.RRT([3,15],[0,-5],obstacle_list,5000,1)
+        # plt.plot(path[:,0],path[:,1])
+        path1 = scara.path_smoother(path,obstacle_list,.5)
+        path2 = scara.path_smoother(path1,obstacle_list,.5)
+        path3 = scara.path_smoother(path2,obstacle_list,.5)
+        print(path3)
+        plt.show()
+
     elif test == 13:
         scara = SCARA([[0,0],10,8])
 
