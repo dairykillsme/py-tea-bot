@@ -234,6 +234,105 @@ class SCARA(object):
 
         return
 
+    def animatePath_but_better(self, motorAngles, xy_array, obstacle_list, frameDelay, width, save, draw, ghost):
+        '''
+        input:	motor angles and end effector points
+        output:	animation of drawing
+
+        args:
+            width:  float   line width in plot
+            save:   BOOL    true -> save mp4
+            draw:   BOOL    true -> enable "pen" trace
+            ghost:  BOOL    true -> show full path underlay
+        '''
+
+        numPts = len(motorAngles)
+
+        # initialize elbow locs
+        B = np.zeros([numPts,2])
+
+        # calculate x and y loc of elbow
+        B[:,0] = self.A[0] + self.r1 * np.cos(motorAngles[:,0])
+        B[:,1] = self.A[1] + self.r1 * np.sin(motorAngles[:,0])
+
+        fig = plt.figure()
+        fig.set_dpi(100)
+        fig.set_size_inches(7, 6.5)
+
+        buffer = (self.r1 + self.r2)/2 * 0.1
+
+        minx1 = np.min(xy_array[:,0])
+        minx2 = np.min(B[:,0])
+        minx  = np.min([minx1, minx2])
+        maxx = np.max(xy_array[:,0])
+
+        miny1 = np.min(xy_array[:,1])
+        miny2 = np.min(B[:,1])
+        miny  = np.min([miny1, miny2])
+        maxy = np.max(xy_array[:,1])
+
+        ax = plt.axes(xlim=(np.min([0,minx])-buffer, maxx+buffer),
+                        ylim=(np.min([0, miny])-buffer, maxy+buffer))
+
+        # vertices at t=0
+        vertices = np.array([
+            [self.A[0],self.A[1]],
+            [B[0,0], B[0,1]],
+            [xy_array[0,0], xy_array[0,1]]
+        ])
+
+        patch = patches.Polygon(vertices, edgecolor=[100/255,0,1], linewidth=width, closed=False, fill=False)
+
+        def init():
+            ax.add_line(patch)
+
+            if ghost == True:
+                # plot full path, which will be drawn on top of
+                plt.plot(xy_array[:,0],xy_array[:,1])
+
+            for obs in obstacle_list:
+                self.plot_poly(obs,'r')
+            self.plot_workspace()
+
+            return patch,
+
+        def animate(i):
+            vertices = np.array([
+                self.A,
+                B[i],
+                xy_array[i]
+            ])
+
+            trace = xy_array[0:i]
+            trace = trace[::-1]
+
+            vertices = np.concatenate((vertices,trace))
+
+            patch.set_xy(vertices)
+
+            return patch,
+
+        if draw == True:
+            anim = animation.FuncAnimation(fig, animate,
+                                            init_func = init,
+                                            frames = numPts,
+                                            interval = frameDelay,
+                                            blit = True)
+        else:
+            plt.plot(xy_array[:,0],xy_array[:,1])
+
+        if save == True:
+            # Set up formatting for the movie files
+            # Writer = animation.writers['ffmpeg']
+            # writer = Writer(fps=15, metadata=dict(artist='Me'), bitrate=1800)
+            # writer = animation.FFMpegWriter(fps=15, metadata=dict(artist='Me'), bitrate=1800)
+            # anim.save("movie.mp4", writer=writer)
+            p = 0
+
+        plt.show()
+
+        return
+
     def xy_CSVToArray(self, xy_CSV):
         '''
         Takes a csv file of xy points and converts to numpy array
@@ -841,12 +940,14 @@ class SCARA(object):
         # plt.show()
 
         return
+
     def auto_plot_arm(self):
         arm = self.angle2arm_poly(self.theta)
         x,y = arm.xy
         plt.plot(x,y,'o',color='#999999')
         plt.plot(*arm.xy,'b')
         return
+
     def angle2arm_poly(self,angles):
         '''
         make a linestring object of arm from pair of angles
@@ -872,6 +973,7 @@ class SCARA(object):
         plt.plot(bx,by)
         plt.plot(cx,cy)
         return
+
     def RRT(self, start, goal, obstacle_list, max_iteration, max_distance):
         # for simplicity, use rejection sampling:
         #   generate points in square that contains workspace
@@ -1097,7 +1199,7 @@ class SCARA(object):
 
         return projection_list
 
-    def find_mode_give_path(self, xy_path, obstacle_list):
+    def find_mode_give_path_angles(self, xy_path, obstacle_list):
 
         theta_pos_mode = self.getMotorAngles(xy_path,'+')
         theta_neg_mode = self.getMotorAngles(xy_path,'-')
@@ -1144,10 +1246,11 @@ if __name__ == "__main__":
     13  one sided case 1
     14  obstacale analyzer and projector
     15  obstacale analyzer and projector w/ out of bounds obstacle
-    16  find_mode_give_path
+    16  find_mode_give_path_angles
+    17  analyze obstacles, make rrt path, animate
     '''
 
-    test = 15
+    test = 17
 
     if test == 1:
         sys = SCARA([[1,1],5,8])
@@ -1477,10 +1580,52 @@ if __name__ == "__main__":
         '''
 
         obstacle_list = []
-        mode_path = scara.find_mode_give_path(path, obstacle_list)
-        scara.animatePath(mode_path, path,
+        mode_path_angles = scara.find_mode_give_path_angles(path, obstacle_list)
+        scara.animatePath(mode_path_angles, path,
                                 frameDelay=500,
                                 width = 2,
                                 save=False,
                                 ghost=True,
                                 draw=True)
+    elif test == 17:
+
+        scara = SCARA([[0,0],10,8])
+
+        theta = np.array([[100, 145]])
+        theta = theta/180*np.pi
+        scara.theta = theta
+        # scara.theta = theta
+
+        o1 = [(-1.5,0.5),(-1.5,1),(-.5,1),(-.5,.5)]
+        o2 = [(5,-1),(5,1),(8,1),(8,-1)]
+        o3 = [(4,12),(4,15),(6,15),(6,13),(10,9),(9,8),(5,12)]
+        o_oob = [(0,20),(5,20),(2.5,22.5)]
+
+        obs1 = geometry.Polygon(o1)
+        obs2 = geometry.Polygon(o2)
+        obs3 = geometry.Polygon(o3)
+        obs_oob = geometry.Polygon(o_oob)
+
+        plt.show()
+
+        obstacle_list = [obs1,obs2,obs3,obs_oob]
+
+        projection_list = scara.obstacle_projector(obstacle_list)
+
+
+        obs_and_proj = obstacle_list + projection_list
+
+        # print('plotting obstacles and projections')
+        # for poly in obs_and_proj:
+        #     scara.plot_poly(poly,'r')
+
+        path = scara.RRT([3,15],[7,-5],obs_and_proj,15000,1.5)
+
+        angles = scara.getMotorAngles(path, '+')
+
+        scara.animatePath_but_better(angles, path, obs_and_proj,
+                        frameDelay=500,
+                        width = 2,
+                        save=False,
+                        ghost=True,
+                        draw=True)
