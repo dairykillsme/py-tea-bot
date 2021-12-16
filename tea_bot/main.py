@@ -45,4 +45,7 @@ if __name__ == "__main__":
 
     path = scara.RRT([map.arm_end_effector.x, map.arm_end_effector.y], [map.goal.x, map.goal.y], obs_and_proj, 5000, 1)
 
+    theta_path = scara.find_mode_give_path(path, obs_and_proj)
+    print(theta_path)
+
     map.stop()
