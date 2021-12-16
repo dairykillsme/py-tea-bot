@@ -8,6 +8,23 @@ from .vision.map import WorldMap, CALIBRATION_FILE_DEFAULT
 from .motion.scara import SCARA
 #from .motion.stepper_control import MotionController
 
+def theta_from_map_points(end_effector_point, joint_point):
+    # determine if we are in + or -
+    mode = ''
+    angle_joint = np.arctan2(joint_point.y, joint_point.x)
+    if angle_joint < 0:
+        angle_joint += 2*np.pi
+    angle_end = np.arctan2(end_effector_point.y, end_effector_point.x)
+    if angle_end < 0:
+        angle_end += 2*np.pi
+
+    if (angle_end < angle_joint):
+        mode = '+'
+    else:
+        mode = '-'
+    
+    return scara.getMotorAngles(np.array([[end_effector_point.x, end_effector_point.y]]), mode)
+
 if __name__ == "__main__":
     matplotlib.use('tkagg') # need to use different backend
     scara = SCARA([[0,0], 9, 9])
@@ -18,21 +35,7 @@ if __name__ == "__main__":
     while not (map.goal_detected and map.ready):
         time.sleep(0.1)
     
-    # determine if we are in + or -
-    mode = ''
-    angle_joint = np.arctan2(map.arm_joint.y, map.arm_joint.x)
-    if angle_joint < 0:
-        angle_joint += 2*np.pi
-    angle_end = np.arctan2(map.arm_end_effector.y, map.arm_end_effector.x)
-    if angle_end < 0:
-        angle_end += 2*np.pi
-
-    if (angle_end < angle_joint):
-        mode = '+'
-    else:
-        mode = '-'
-    
-    theta = scara.getMotorAngles(np.array([[map.arm_end_effector.x, map.arm_end_effector.y]]), mode)
+    theta = theta_from_map_points(map.arm_end_effector, map.arm_joint)
     scara.theta = theta
 
     projection_list = scara.obstacle_projector(map.obstacle_list)
