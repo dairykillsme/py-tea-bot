@@ -176,8 +176,6 @@ class SCARA(object):
         miny  = np.min([miny1, miny2])
         maxy = np.max(xy_array[:,1])
 
-
-
         ax = plt.axes(xlim=(np.min([0,minx])-buffer, maxx+buffer),
                         ylim=(np.min([0, miny])-buffer, maxy+buffer))
 
@@ -205,32 +203,6 @@ class SCARA(object):
                 B[i],
                 xy_array[i]
             ])
-
-            # if draw == True:
-            #     '''
-            #     ##########################
-            #     ##########################
-            #     THIS PART IS HORRIBLY SLOW
-            #     AND JANKY
-            #     ##########################
-            #     ##########################
-            #     '''
-            #     trace_rev = xy_array[0:i]
-            #     trace_fwd = trace_rev[::-1]
-            #
-            #     vertices = np.concatenate((vertices,
-            #                                 trace_fwd,
-            #                                 trace_rev))
-            #
-            # close = np.array([
-            #     xy_array[i],
-            #     B[i],
-            #     self.A
-            # ])
-            #
-            # vertices = np.concatenate((vertices, close))
-            #
-            # patch.set_xy(vertices)
 
             trace = xy_array[0:i]
             trace = trace[::-1]
@@ -360,7 +332,7 @@ class SCARA(object):
         plt.plot(*projection.exterior.xy)
         plt.plot(xobs,yobs)
         plt.plot(self.A[0],self.A[1],'ro')
-        plt.show()
+        # plt.show()
 
         return projection
 
@@ -378,16 +350,6 @@ class SCARA(object):
                 projection of obstacle
 
         '''
-
-        # theta = np.zeros([1,2])
-        # theta[0,0] = np.pi/2
-        # theta[0,1] = np.pi
-        #
-        # arm = self.angle2arm_poly(theta)
-        #
-        # plt.plot(*arm.xy)
-        # plt.plot(*obstacle.exterior.xy)
-        # plt.show()
 
         # get centroid of obstacle
         centroid = list(obstacle.centroid.coords)[0]
@@ -440,7 +402,6 @@ class SCARA(object):
         elif obs_dir == 'right':
             alpha_minus = alpha_plus - spread
 
-
         # segment 1
         cx1 = self.r1*np.cos(alpha_plus) + self.A[0]
         cy1 = self.r1*np.sin(alpha_plus) + self.A[1]
@@ -492,7 +453,7 @@ class SCARA(object):
         self.plot_poly(projection,'g')
         self.plot_poly(obstacle,'r')
         # plt.plot(self.A[0],self.A[1],'ro')
-        plt.show()
+        # plt.show()
 
         return projection
 
@@ -512,7 +473,6 @@ class SCARA(object):
         sweep_deg = .1
         sweep_rad = sweep_deg/180*np.pi # in radians
 
-
         if obs_dir == 'right':
             # first link thru centroid, second link fully closed
             theta[0,1] = 0
@@ -528,7 +488,6 @@ class SCARA(object):
                 arm = self.angle2arm_poly(theta)
 
             alpha_plus = theta[0,0]
-
 
             # need to get back into intersection
             while not arm.intersects(obstacle):
@@ -701,7 +660,7 @@ class SCARA(object):
 
         self.plot_poly(obstacle,'r')
         self.plot_poly(projection,'g')
-        plt.show()
+        # plt.show()
 
         return projection
 
@@ -773,9 +732,9 @@ class SCARA(object):
         # once segment is complete, convert to numpy array
         seg1 = np.asarray(seg1)
 
-        # ##############################
-        # # minus (-) side of obstacle #
-        # ##############################
+        ##############################
+        # minus (-) side of obstacle #
+        ##############################
         seg3 = []
 
         theta[0,0] = thetao
@@ -824,7 +783,6 @@ class SCARA(object):
         # once segment is complete, convert to numpy array
         seg3 = np.asarray(seg3)
 
-
         # build arc from seg 1 to seg 3
         x,y = self.make_arc(self.A[0],self.A[1],self.r1+self.r2,[alpha_plus,alpha_minus],100)
         seg2 = list(zip(x,y))
@@ -847,10 +805,9 @@ class SCARA(object):
 
         projection = geometry.Polygon(loop)
 
-        # self.plot_arm(arm)
         self.plot_poly(obstacle,'r')
         self.plot_poly(projection,'g')
-        plt.show()
+        # plt.show()
 
         return projection
 
@@ -864,7 +821,6 @@ class SCARA(object):
             angle_bound     upper/lower bounds of theta
         '''
         angles = np.linspace(angle_bounds[0],angle_bounds[1],n)
-        # angles = np.linspace(angle_lo,angle_hi,n)
 
         x = cx + radius*np.cos(angles)
         y = cy + radius*np.sin(angles)
@@ -967,7 +923,6 @@ class SCARA(object):
             rndpts[k,1] = y
             rndpts[k,2] = r
 
-
             #####################
             # find closest node #
             #####################
@@ -975,14 +930,6 @@ class SCARA(object):
             all_dist = np.sum(np.abs(all_dif)**2,axis=-1)**(1./2) # distances to all nodes
             close_index = np.argmin(all_dist) # index of closest node
             close_dist = all_dist[close_index] # distance of closest node
-
-            # print([x,y])
-            # print(tree[0:num_nodes,0:2])
-            # print(all_dif)
-            # print(all_dist)
-            # print(close_index)
-            # print(close_dist)
-            # input()
 
             ##################################
             # project node closer if too far #
@@ -1026,15 +973,6 @@ class SCARA(object):
                 print('max iteration reached. no path found')
                 break
 
-        # ax,ay = self.make_arc(0,0,self.r1-self.r2,[0,2*np.pi],200)
-        # bx,by = self.make_arc(0,0,self.r1,[0,2*np.pi],200)
-        # cx,cy = self.make_arc(0,0,self.r1+self.r2,[0,2*np.pi],200)
-        # plt.plot(ax,ay)
-        # plt.plot(bx,by)
-        # plt.plot(cx,cy)
-        # plt.plot(rndpts[:,0],rndpts[:,1],'r.')
-        # plt.show()
-
         ###########################
         # trace back optimal path #
         ###########################
@@ -1044,9 +982,6 @@ class SCARA(object):
         while not parent[2] == 0:
             # while parent isn't first parent, append optimal path
             optimal_path = np.append(optimal_path,[parent[0:2]],axis=0)
-
-            # print(optimal_path)
-            # input()
 
             # get next parent
             parent = tree[int(parent[2]),:]
@@ -1147,20 +1082,6 @@ class SCARA(object):
         obs_dir_list, obs_case_list = self.obstacle_analyzer(obstacle_list)
 
         projection_list = []
-
-        # for k,obs in enumerate(obstacle_list):
-        #     case = obs_case_list[k]
-        #     dir = obs_dir_list[k]
-        #     if case == 1:
-        #         projection = self.case1_proj_GN(obs, dir)
-        #     elif case == 2:
-        #         projection = self.case2_proj_GN(obs, dir)
-        #     elif case == 3:
-        #         projection = self.case3_proj_GN(obs)
-        #     else:
-        #         projection = []
-        #         print('problem with case class. no projection made')
-        #     projection_list.append(projection)
 
         for obs, case, dir in zip(obstacle_list, obs_case_list, obs_dir_list):
             if case == 1:
