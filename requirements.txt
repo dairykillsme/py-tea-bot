@@ -1,7 +1,8 @@
 numpy
-#matplotlib==2.2.4
+matplotlib
 adafruit-circuitpython-motorkit
 opencv-contrib-python
 tk
 pandas
 shapely
+  
