@@ -1108,12 +1108,13 @@ class SCARA(object):
         intersect_flag = False
 
         for angle_pair in theta_pos_mode:
+            angle_pair = np.array([angle_pair])
             arm = self.angle2arm_poly(angle_pair)
             for obs in obstacle_list:
                 if obs.intersects(arm):
                     intersect_flag = True
                     break
-            if intersect_flag = True:
+            if intersect_flag == True:
                 mode = '-'
                 break
 
@@ -1143,6 +1144,7 @@ if __name__ == "__main__":
     13  one sided case 1
     14  obstacale analyzer and projector
     15  obstacale analyzer and projector w/ out of bounds obstacle
+    16  find_mode_give_path
     '''
 
     test = 15
@@ -1450,3 +1452,35 @@ if __name__ == "__main__":
         scara.plot_workspace()
 
         plt.show()
+    elif test == 16:
+        scara = lib.SCARA([[0,0],10,8])
+
+        path = np.array([[4,15],[6,13],[7,12],[8,11]])
+
+        theta_p = scara.getMotorAngles(path,'+')
+        theta_m = scara.getMotorAngles(path,'-')
+
+        '''
+        scara.animatePath(theta_p, path,
+                                frameDelay=500,
+                                width = 2,
+                                save=False,
+                                ghost=True,
+                                draw=True)
+
+        scara.animatePath(theta_m, path,
+                                frameDelay=500,
+                                width = 2,
+                                save=False,
+                                ghost=True,
+                                draw=True)
+        '''
+
+        obstacle_list = []
+        mode_path = scara.find_mode_give_path(path, obstacle_list)
+        scara.animatePath(mode_path, path,
+                                frameDelay=500,
+                                width = 2,
+                                save=False,
+                                ghost=True,
+                                draw=True)
