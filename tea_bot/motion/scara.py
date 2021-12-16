@@ -212,6 +212,9 @@ class SCARA(object):
 
             patch.set_xy(vertices)
 
+            fname = 'frame'+str(i)
+            plt.savefig(fname)
+
             return patch,
 
         if draw == True:
@@ -228,8 +231,10 @@ class SCARA(object):
             # Writer = animation.writers['ffmpeg']
             # writer = Writer(fps=15, metadata=dict(artist='Me'), bitrate=1800)
             # writer = animation.FFMpegWriter(fps=15, metadata=dict(artist='Me'), bitrate=1800)
-            # anim.save("movie.mp4", writer=writer)
-            p = 0
+            print('tryna save...')
+            f = r"D:\all my files\documents\uvm\5_masters\3_fall_21\autonomy\final_proj\code\py-tea-bot\tea_bot\motion"
+            writergif = animation.PillowWriter(fps=30)
+            anim.save(f, writer=writergif)
 
         plt.show()
 
@@ -262,18 +267,16 @@ class SCARA(object):
 
         buffer = (self.r1 + self.r2)/2 * 0.1
 
-        minx1 = np.min(xy_array[:,0])
-        minx2 = np.min(B[:,0])
-        minx  = np.min([minx1, minx2])
-        maxx = np.max(xy_array[:,0])
+        workspace_radius = (self.r1+self.r2)
 
-        miny1 = np.min(xy_array[:,1])
-        miny2 = np.min(B[:,1])
-        miny  = np.min([miny1, miny2])
-        maxy = np.max(xy_array[:,1])
+        minx = self.A[0] - workspace_radius - buffer
+        maxx = self.A[0] + workspace_radius + buffer
 
-        ax = plt.axes(xlim=(np.min([0,minx])-buffer, maxx+buffer),
-                        ylim=(np.min([0, miny])-buffer, maxy+buffer))
+        miny = self.A[1] - workspace_radius - buffer
+        maxy = self.A[0] + workspace_radius + buffer
+
+        ax = plt.axes(xlim=(minx, maxx),
+                        ylim=(miny, maxy))
 
         # vertices at t=0
         vertices = np.array([
@@ -474,7 +477,7 @@ class SCARA(object):
             if not arm.intersects(obstacle):
                 intersect = False
                 alpha_plus = theta[0,0]
-                self.plot_arm(arm)
+                # self.plot_arm(arm)
 
         # sweep - to get alpha_minus
         theta[0,0] = thetao
@@ -486,7 +489,7 @@ class SCARA(object):
             if not arm.intersects(obstacle):
                 intersect = False
                 alpha_minus = theta[0,0]
-                self.plot_arm(arm)
+                # self.plot_arm(arm)
 
         ##################################
         # build projection from segments #
@@ -1114,7 +1117,7 @@ class SCARA(object):
 
         return optimal_path
 
-    def path_smoother(self,path,obstacle_list,threshold):
+    def path_smoother(self,path,obstacle_list,threshold,final_thresh):
         # print(path)
         # to keep points from projecting into the center region, make it an obstacle
         region_A = geometry.Point(self.A[0],self.A[1]).buffer(self.r1-self.r2)
@@ -1127,7 +1130,7 @@ class SCARA(object):
         new_path=np.empty([1,2])
         cost=[]
         Ctmp=0
-        
+
         for k in range(n_pts-1):
             p1=path[k,:]
             p2=path[k+1,:]
@@ -1158,7 +1161,7 @@ class SCARA(object):
             if n_pts_new_path<3:
                 print('yo mama so fat, sh-')
                 break
-        
+
             rand_index1=np.random.randint(0,n_pts_new_path-1)
             rand_index2=np.random.randint(rand_index1+1,n_pts_new_path)
             rand_line= geometry.LineString([new_path[rand_index1,:].tolist(),new_path[rand_index2,:].tolist()])
@@ -1179,11 +1182,38 @@ class SCARA(object):
                 mommy_bucks = cost[0:rand_index1+1]
                 daddy_bucks = cost[rand_index2:n_pts_new_path]-cost_of_rand_line+rand_line.length
                 cost=np.concatenate((mommy_bucks,daddy_bucks),axis=0)
-        Smooth_path=new_path
+
+        #######################################
+        # split smooth path into smaller bits #
+        #######################################
+        # do this so that arm can follow short waypoints
+        n_pts = np.shape(new_path)[0]
+        smooth_path=np.empty([1,2])
+        cost=[]
+        Ctmp=0
+
+        for k in range(n_pts-1):
+            p1=new_path[k,:]
+            p2=new_path[k+1,:]
+            AB=p2-p1
+            ABunit=AB/np.linalg.norm(p1-p2)
+            numBreaks=np.floor(np.linalg.norm(p1-p2)/final_thresh)
+
+            for j in range(int(numBreaks)+1):
+                inBetweenPnt=p1+ABunit*j*final_thresh
+                smooth_path=np.append(smooth_path,[inBetweenPnt],axis=0)
+                cost=np.append(cost,[Ctmp+j*final_thresh],axis=0)
+
+            Ctmp=cost[-1]+np.linalg.norm(p2-smooth_path[-1,:])
+
+        smooth_path=np.append(smooth_path,[p2],axis=0)
+        cost=np.append(cost,[Ctmp],axis=0)
+        smooth_path=np.delete(smooth_path,0,0)
 
         #plottin' time
-        plt.plot(Smooth_path[:,0],Smooth_path[:,1],'k',linewidth=1)
-        return Smooth_path
+        plt.plot(smooth_path[:,0],smooth_path[:,1],linewidth=3)
+
+        return smooth_path
 
     def obstacle_analyzer(self, obstacle_list):
         obs_dir_list = []
@@ -1313,11 +1343,7 @@ if __name__ == "__main__":
     17  analyze obstacles, make rrt path, animate
     '''
 
-<<<<<<< HEAD
     test = 17
-=======
-    test = 12
->>>>>>> dev-integration
 
     if test == 1:
         sys = SCARA([[1,1],5,8])
@@ -1668,7 +1694,6 @@ if __name__ == "__main__":
         theta = np.array([[100, 145]])
         theta = theta/180*np.pi
         scara.theta = theta
-        # scara.theta = theta
 
         o1 = [(-1.5,0.5),(-1.5,1),(-.5,1),(-.5,.5)]
         o2 = [(5,-1),(5,1),(8,1),(8,-1)]
@@ -1678,11 +1703,10 @@ if __name__ == "__main__":
         obs1 = geometry.Polygon(o1)
         obs2 = geometry.Polygon(o2)
         obs3 = geometry.Polygon(o3)
-        obs_oob = geometry.Polygon(o_oob)
 
         plt.show()
 
-        obstacle_list = [obs1,obs2,obs3,obs_oob]
+        obstacle_list = [obs1,obs2,obs3]
 
         projection_list = scara.obstacle_projector(obstacle_list)
 
@@ -1693,13 +1717,17 @@ if __name__ == "__main__":
         # for poly in obs_and_proj:
         #     scara.plot_poly(poly,'r')
 
-        path = scara.RRT([3,15],[7,-5],obs_and_proj,15000,1.5)
+        path = scara.RRT([3,15],[9,-5],obs_and_proj,20000,2)
+        path = scara.path_smoother(path,obs_and_proj,1,.9)
+        path = scara.path_smoother(path,obs_and_proj,.8,.1)
+
+        plt.show()
 
         angles = scara.getMotorAngles(path, '+')
 
         scara.animatePath_but_better(angles, path, obs_and_proj,
-                        frameDelay=500,
+                        frameDelay=1,
                         width = 2,
-                        save=False,
+                        save=True,
                         ghost=True,
                         draw=True)
