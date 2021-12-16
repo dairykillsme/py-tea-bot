@@ -106,27 +106,24 @@ class WorldMap:
 
                 # find affine transform knowing the location of the source points
                 real_points = np.float32([self.top_left[0], self.top_right[0], self.bottom_left[0], self.bottom_right[0]])
-                warp_mat = cv.getPerspectiveTransform(real_points, self.SOURCE_POINTS)
+                self.warp_mat = cv.getPerspectiveTransform(real_points, self.SOURCE_POINTS)
 
-                q = np.dot(warp_mat, np.concatenate((self.top_left, [[1]]), axis=1).T)
-                self.top_left = np.divide(q[:2], q[2]).T
-                q = np.dot(warp_mat, np.concatenate((self.top_right, [[1]]), axis=1).T)
-                self.top_right = np.divide(q[:2], q[2]).T
-                q = np.dot(warp_mat, np.concatenate((self.bottom_left, [[1]]), axis=1).T)
-                self.bottom_left = np.divide(q[:2], q[2]).T
-                q = np.dot(warp_mat, np.concatenate((self.bottom_right, [[1]]), axis=1).T)
-                self.bottom_right = np.divide(q[:2], q[2]).T
-                q = np.dot(warp_mat, np.concatenate((self.arm_base, [[1]]), axis=1).T)
-                self.arm_base = np.divide(q[:2], q[2]).T
-                q = np.dot(warp_mat, np.concatenate((self.arm_joint, [[1]]), axis=1).T)
-                self.arm_joint = np.divide(q[:2], q[2]).T
-                q = np.dot(warp_mat, np.concatenate((self.arm_end_effector, [[1]]), axis=1).T)
-                self.arm_end_effector = np.divide(q[:2], q[2]).T
+                self.top_left = self.perspective_transform_point(self.top_left)
+                self.top_right = self.perspective_transform_point(self.top_right)
+                self.bottom_left = self.perspective_transform_point(self.bottom_left)
+                self.bottom_right = self.perspective_transform_point(self.bottom_right)
+                self.arm_joint = self.perspective_transform_point(self.arm_joint)
+                self.arm_base = self.perspective_transform_point(self.arm_base)
+                self.arm_end_effector = self.perspective_transform_point(self.arm_end_effector)
 
                 if not self.ready:
                     self.ready = True
+        
+    def perspective_transform_point(self, point):
+        q = np.dot(self.warp_mat, np.concatenate((point, [[1]]), axis=1).T)
+        return np.divide(q[:2], q[2]).T
 
-    def get_tagged_points(self):
+    def plot_tagged_points(self):
         # Plot points
         if (self.show_feed and self.ready):
             boundary = np.array([self.top_left,
@@ -183,7 +180,7 @@ def main(args):
     map.start()
     while map.running:
         try:
-            map.get_tagged_points()
+            map.plot_tagged_points()
             time.sleep(0.01)
         except KeyboardInterrupt:
             map.stop()
