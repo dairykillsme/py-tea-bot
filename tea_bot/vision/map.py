@@ -6,7 +6,8 @@ from cv2 import aruco, imwrite, perspectiveTransform
 import matplotlib
 import numpy as np
 import matplotlib.pyplot as plt
-from numpy.linalg import svd
+from shapely import geometry
+from shapely.geometry import geo
 from .calibration import CameraCalibration
 
 CALIBRATION_FILE_DEFAULT = "share/calibration/nexigo_webcam/cfg.xml"
@@ -29,7 +30,7 @@ class WorldMap:
     board = aruco.GridBoard_create(5, 7, MARKER_LENGTH, MARKER_SEPARATION, aruco_dict)
     aruco_params = aruco.DetectorParameters_create()
 
-    def __init__(self, calibration_file, area_width=42, area_height=42, video_index=0, show_feed=False) -> None:
+    def __init__(self, calibration_file, area_width=36, area_height=36, video_index=0, show_feed=False) -> None:
         # Load calibration
         self.calibration = CameraCalibration(calibration_file)
         self.calibration.load_calibration()
@@ -86,31 +87,31 @@ class WorldMap:
                 # Translate from camera space to world space
                 for id_idx in range(0, len(ids)):
                     if ids[id_idx] == WorldMap.TOP_LEFT_ARUCO_ID:
-                        self.top_left = np.mean(corners[id_idx], axis=1)
+                        top_left = np.mean(corners[id_idx], axis=1)
                     elif ids[id_idx] == WorldMap.TOP_RIGHT_ARUCO_ID:
-                        self.top_right = np.mean(corners[id_idx], axis=1)
+                        top_right = np.mean(corners[id_idx], axis=1)
                     elif ids[id_idx] == WorldMap.BOTTOM_LEFT_ARUCO_ID:
-                        self.bottom_left = np.mean(corners[id_idx], axis=1)
+                        bottom_left = np.mean(corners[id_idx], axis=1)
                     elif ids[id_idx] == WorldMap.BOTTOM_RIGHT_ARUCO_ID:
-                        self.bottom_right = np.mean(corners[id_idx], axis=1)
+                        bottom_right = np.mean(corners[id_idx], axis=1)
                     elif ids[id_idx] == WorldMap.ARM_BASE_ARUCO_ID:
-                        self.arm_base = np.mean(corners[id_idx], axis=1)
+                        arm_base = np.mean(corners[id_idx], axis=1)
                     elif ids[id_idx] == WorldMap.ARM_JOINT_ARUCO_ID:
-                        self.arm_joint = np.mean(corners[id_idx], axis=1)
+                        arm_joint = np.mean(corners[id_idx], axis=1)
                     elif ids[id_idx] == WorldMap.ARM_END_EFFECTOR_ARUCO_ID:
-                        self.arm_end_effector = np.mean(corners[id_idx], axis=1)
+                        arm_end_effector = np.mean(corners[id_idx], axis=1)
 
                 # find affine transform knowing the location of the source points
-                real_points = np.float32([self.top_left[0], self.top_right[0], self.bottom_left[0], self.bottom_right[0]])
+                real_points = np.float32([top_left[0], top_right[0], bottom_left[0], bottom_right[0]])
                 self.warp_mat = cv.getPerspectiveTransform(real_points, self.SOURCE_POINTS)
 
-                self.top_left = self.perspective_transform_point(self.top_left)
-                self.top_right = self.perspective_transform_point(self.top_right)
-                self.bottom_left = self.perspective_transform_point(self.bottom_left)
-                self.bottom_right = self.perspective_transform_point(self.bottom_right)
-                self.arm_joint = self.perspective_transform_point(self.arm_joint)
-                self.arm_base = self.perspective_transform_point(self.arm_base)
-                self.arm_end_effector = self.perspective_transform_point(self.arm_end_effector)
+                self.top_left = geometry.Point(self.perspective_transform_point(top_left)[0])
+                self.top_right = geometry.Point(self.perspective_transform_point(top_right)[0])
+                self.bottom_left = geometry.Point(self.perspective_transform_point(bottom_left)[0])
+                self.bottom_right = geometry.Point(self.perspective_transform_point(bottom_right)[0])
+                self.arm_joint = geometry.Point(self.perspective_transform_point(arm_joint)[0])
+                self.arm_base = geometry.Point(self.perspective_transform_point(arm_base)[0])
+                self.arm_end_effector = geometry.Point(self.perspective_transform_point(arm_end_effector)[0])
 
                 if not self.ready:
                     self.ready = True
@@ -137,10 +138,26 @@ class WorldMap:
                 approx = cv.approxPolyDP(cnt, 0.009*cv.arcLength(cnt, True), True)
                 perspective_mapped_polygon = self.persepective_transform_polygon(approx)
                 img_obstacles.append(approx)
-                mapped_obstacles.append(perspective_mapped_polygon)
+
+                # convert to polygon
+                shapely_poly = geometry.Polygon(np.squeeze(perspective_mapped_polygon))
+
+                # do not add polygons that contain critical points
+                if not self.contains_critical_point(shapely_poly):
+                    mapped_obstacles.append(shapely_poly)
 
         self._img_obstacle_list = img_obstacles
         self.obstacle_list = mapped_obstacles
+    
+    def contains_critical_point(self, polygon):
+        """Check if a polygon contains any of the critical points"""
+        return (self.arm_base.within(polygon) or
+                self.arm_end_effector.within(polygon) or
+                self.arm_joint.within(polygon) or
+                self.top_left.within(polygon) or
+                self.top_right.within(polygon) or
+                self.bottom_left.within(polygon) or
+                self.bottom_right.within(polygon))
     
     def find_goal(self, grayscale_img):
         return
@@ -158,31 +175,30 @@ class WorldMap:
     def plot_tagged_points(self):
         # Plot points
         if (self.show_feed and self.ready):
-            boundary = np.array([self.top_left,
-                                 self.top_right,
-                                 self.bottom_right,
-                                 self.bottom_left,
-                                 self.top_left])
-            bx,by = boundary.T
+            boundary = np.array([self.top_left.xy,
+                                 self.top_right.xy,
+                                 self.bottom_right.xy,
+                                 self.bottom_left.xy,
+                                 self.top_left.xy])
+            bx,by = boundary.T[0]
 
-            arm = np.array([self.arm_base,
-                            self.arm_joint,
-                            self.arm_end_effector])
-            ax,ay = arm.T
+            arm = np.array([self.arm_base.xy,
+                            self.arm_joint.xy,
+                            self.arm_end_effector.xy])
+            ax,ay = arm.T[0]
 
             matplotlib.use('tkagg') # need to use different backend
             plt.cla()
-            plt.plot(ax[0], ay[0])
-            plt.plot(bx[0], by[0])
+            plt.plot(ax, ay)
+            plt.plot(bx, by)
 
             for polygon in self.obstacle_list:
-                polygon = np.array(polygon)
-                px,py = polygon.T
-                plt.plot(px[0], py[0])
+                x,y = polygon.exterior.xy
+                plt.fill(x,y,alpha=.3,fc='k',ec='none') 
 
             plt.axis('scaled')
-            plt.xlim([-25, 25])
-            plt.ylim([-25, 25])
+            plt.xlim([-20, 20])
+            plt.ylim([-20, 20])
             plt.pause(0.0001)
 
 
