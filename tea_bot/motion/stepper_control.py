@@ -28,7 +28,7 @@ class MotionController:
     
     def shortest(self, dest, source):
         distance = fmod((dest - source + 2*np.pi), 2*np.pi)
-        return distance, distance > np.pi
+        return distance, distance < np.pi
     
     def tick(self):
         theta1_err, theta1_dir = self.shortest(self.theta1_target, self.theta1_real)
