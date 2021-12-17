@@ -30,7 +30,6 @@ if __name__ == "__main__":
     matplotlib.use('tkagg') # need to use different backend
     scara = SCARA([[0,0], 9.5, 9.5])
     map = WorldMap(CALIBRATION_FILE_DEFAULT, show_feed=True, area_height=32, area_width=32)
-    controller = MotionController()
     map.start()
 
     #  wait until ready and goal detected
@@ -62,11 +61,13 @@ if __name__ == "__main__":
 
     print('Following Path:')
     print(theta_path)
+
+    controller = MotionController(theta_path[0][0], theta[0][1])
     
     for theata_pair in theta_path:
         controller.set_theta1(theata_pair[0])
         controller.set_theta2(theata_pair[1])
-        while not controller.tick(*(theta_from_map_points(map.arm_end_effector, map.arm_joint)[0])):
-            time.sleep(0.5)
+        while not controller.tick():
+            time.sleep(0.1)
 
     map.stop()
