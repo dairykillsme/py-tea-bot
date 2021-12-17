@@ -1054,7 +1054,7 @@ class SCARA(object):
             # print('num points in new path ',n_pts_new_path)
 
             if n_pts_new_path<3:
-                print('yo mama so fat, sh-')
+                # print('straight line')
                 break
         
             rand_index1=np.random.randint(0,n_pts_new_path-1)
@@ -1077,6 +1077,35 @@ class SCARA(object):
                 mommy_bucks = cost[0:rand_index1+1]
                 daddy_bucks = cost[rand_index2:n_pts_new_path]-cost_of_rand_line+rand_line.length
                 cost=np.concatenate((mommy_bucks,daddy_bucks),axis=0)
+        
+        # let's re-discretize that path yo!
+        path_to_discretize=new_path
+        smaller_threshold=0.9*threshold
+
+        n_pts = np.shape(path_to_discretize)[0]
+        new_path=np.empty([1,2])
+        # cost=[]
+        # Ctmp=0
+        
+        for k in range(n_pts-1):
+            p1=path_to_discretize[k,:]
+            p2=path_to_discretize[k+1,:]
+            AB=p2-p1
+            ABunit=AB/np.linalg.norm(p1-p2)
+            numBreaks=np.floor(np.linalg.norm(p1-p2)/smaller_threshold)
+
+            for j in range(int(numBreaks)+1):
+                inBetweenPnt=p1+ABunit*j*smaller_threshold
+                new_path=np.append(new_path,[inBetweenPnt],axis=0)
+                # cost=np.append(cost,[Ctmp+j*threshold],axis=0)
+
+            # Ctmp=cost[-1]+np.linalg.norm(p2-new_path[-1,:])
+
+        new_path=np.append(new_path,[p2],axis=0)
+        # cost=np.append(cost,[Ctmp],axis=0)
+        new_path=np.delete(new_path,0,0)
+        
+        
         Smooth_path=new_path
 
         #plottin' time
