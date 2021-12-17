@@ -66,7 +66,7 @@ if __name__ == "__main__":
     for theata_pair in theta_path:
         controller.set_theta1(theata_pair[0])
         controller.set_theta2(theata_pair[1])
-        while not controller.tick(*theta_from_map_points(map.arm_end_effector, map.arm_joint)):
+        while not controller.tick(*(theta_from_map_points(map.arm_end_effector, map.arm_joint)[0])):
             time.sleep(0.1)
 
     map.stop()
