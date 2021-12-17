@@ -27,19 +27,19 @@ class MotionController:
         if (np.abs(theta1_err) > MotionController.THETA_1_RADS_STEP):
             if theta1_err > 0:
                 self.kit.stepper2.onestep(direction=2, style=1)
-                self.theta1_real -= MotionController.THETA_1_RADS_STEP
+                self.theta1_real += MotionController.THETA_1_RADS_STEP
             else:
                 self.kit.stepper2.onestep(direction=1, style=1)
-                self.theta1_real += MotionController.THETA_1_RADS_STEP
+                self.theta1_real -= MotionController.THETA_1_RADS_STEP
         
         theta2_err = self.theta2_target - self.theta2_real
         if (np.abs(theta2_err) > MotionController.THETA_2_RADS_STEP):
             if theta2_err > 0:
                 self.kit.stepper1.onestep(direction=2, style=1)
-                self.theta2_real -= MotionController.THETA_2_RADS_STEP
+                self.theta2_real += MotionController.THETA_2_RADS_STEP
             else:
                 self.kit.stepper1.onestep(direction=1, style=1)
-                self.theta2_real += MotionController.THETA_2_RADS_STEP
+                self.theta2_real -= MotionController.THETA_2_RADS_STEP
         
         if (np.abs(theta1_err) > MotionController.THETA_1_RADS_STEP) or (np.abs(theta2_err) > MotionController.THETA_2_RADS_STEP):
             return False
