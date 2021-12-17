@@ -36,28 +36,26 @@ if __name__ == "__main__":
     while not (map.goal_detected and map.ready):
         time.sleep(0.1)
 
-    print('Found goal\n')
+    print('Found goal')
     
     theta = theta_from_map_points(map.arm_end_effector, map.arm_joint)
     scara.theta = theta
 
     projection_list = scara.obstacle_projector(map.obstacle_list)
     obs_and_proj = map.obstacle_list + projection_list
-    center_obstacle = geometry.Point(0,0).buffer(1.5)
-    obs_and_proj.append(center_obstacle)
 
-    print('Projected obstacles!\n')
+    print('Projected obstacles!')
 
     scara.auto_plot_arm()
 
     path = scara.RRT([map.arm_end_effector.x, map.arm_end_effector.y], [map.goal.x, map.goal.y], obs_and_proj, 20000, 3)
     path_smoothed = scara.path_smoother(path, obs_and_proj, 1)
 
-    print('Found  Path!\n')
+    print('Found  Path!')
 
     plt.show()
 
-    theta_path = scara.find_mode_give_path(path_smoothed, obs_and_proj)
+    theta_path = scara.find_mode_give_path(path_smoothed, map.obstacle_list)
 
     print('Following Path:')
     print(theta_path)
@@ -70,4 +68,4 @@ if __name__ == "__main__":
         while not controller.tick():
             time.sleep(0.1)
 
-    map.stop()
+    #map.stop()

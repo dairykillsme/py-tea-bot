@@ -1,5 +1,12 @@
 from math import fmod
-from adafruit_motorkit import MotorKit
+
+# Let this run as a test on computer
+try:
+    from adafruit_motorkit import MotorKit
+    RASPI = True
+except NotImplementedError:
+    RASPI = False
+
 import time
 import numpy as np
 
@@ -8,7 +15,8 @@ class MotionController:
     THETA_2_RADS_STEP = np.pi / 200
     
     def __init__(self, theta1_initial, theta2_inital) -> None:
-        self.kit = MotorKit()
+        if RASPI:
+            self.kit = MotorKit()
         self.theta1_target = 0
         self.theta2_target = 0
         if (theta1_initial < 0):
@@ -34,19 +42,23 @@ class MotionController:
         theta1_err, theta1_dir = self.shortest(self.theta1_target, self.theta1_real)
         if (np.abs(theta1_err) > MotionController.THETA_1_RADS_STEP):
             if theta1_dir:
-                self.kit.stepper2.onestep(direction=2, style=1)
+                if RASPI:
+                    self.kit.stepper2.onestep(direction=2, style=1)
                 self.theta1_real += MotionController.THETA_1_RADS_STEP
             else:
-                self.kit.stepper2.onestep(direction=1, style=1)
+                if RASPI:
+                    self.kit.stepper2.onestep(direction=1, style=1)
                 self.theta1_real -= MotionController.THETA_1_RADS_STEP
         
         theta2_err, theta2_dir = self.shortest(self.theta2_target, self.theta2_real)
         if (np.abs(theta2_err) > MotionController.THETA_2_RADS_STEP):
             if theta2_dir:
-                self.kit.stepper1.onestep(direction=2, style=1)
+                if RASPI:
+                    self.kit.stepper1.onestep(direction=2, style=1)
                 self.theta2_real += MotionController.THETA_2_RADS_STEP
             else:
-                self.kit.stepper1.onestep(direction=1, style=1)
+                if RASPI:
+                    self.kit.stepper1.onestep(direction=1, style=1)
                 self.theta2_real -= MotionController.THETA_2_RADS_STEP
         
         if (np.abs(theta1_err) > MotionController.THETA_1_RADS_STEP) or (np.abs(theta2_err) > MotionController.THETA_2_RADS_STEP):
