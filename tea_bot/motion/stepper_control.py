@@ -12,7 +12,10 @@ class MotionController:
         self.theta2_target = 0
     
     def set_theta1(self, theta1):
-        self.theta1_target = theta1
+        if (theta1 < 0):
+            self.theta1_target = theta1 + np.pi
+        else:
+            self.theta1_target = theta1
     
     def set_theta2(self, theta2):
         self.theta2_target = theta2

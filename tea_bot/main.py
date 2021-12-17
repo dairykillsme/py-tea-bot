@@ -3,6 +3,7 @@ import time
 import matplotlib.pyplot as plt
 import matplotlib
 from numpy.lib.function_base import angle
+from shapely import geometry
 
 from .vision.map import WorldMap, CALIBRATION_FILE_DEFAULT
 from .motion.scara import SCARA
@@ -35,21 +36,32 @@ if __name__ == "__main__":
     #  wait until ready and goal detected
     while not (map.goal_detected and map.ready):
         time.sleep(0.1)
+
+    print('Found goal\n')
     
     theta = theta_from_map_points(map.arm_end_effector, map.arm_joint)
     scara.theta = theta
 
     projection_list = scara.obstacle_projector(map.obstacle_list)
     obs_and_proj = map.obstacle_list + projection_list
+    center_obstacle = geometry.point([0,0]).buffer(1.5)
+    obs_and_proj.append(center_obstacle)
+
+    print('Projected obstacles!\n')
 
     scara.auto_plot_arm()
 
-    path = scara.RRT([map.arm_end_effector.x, map.arm_end_effector.y], [map.goal.x, map.goal.y], obs_and_proj, 20000, 2)
+    path = scara.RRT([map.arm_end_effector.x, map.arm_end_effector.y], [map.goal.x, map.goal.y], obs_and_proj, 20000, 3)
     path_smoothed = scara.path_smoother(path, obs_and_proj, 1)
+
+    print('Found  Path!\n')
 
     plt.show()
 
     theta_path = scara.find_mode_give_path(path_smoothed, obs_and_proj)
+
+    print('Following Path:')
+    print(theta_path)
     
     for theata_pair in theta_path:
         controller.set_theta1(theata_pair[0])
