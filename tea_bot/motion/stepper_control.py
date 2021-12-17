@@ -10,7 +10,10 @@ class MotionController:
         self.kit = MotorKit()
         self.theta1_target = 0
         self.theta2_target = 0
-        self.theta1_real = theta1_initial
+        if (theta1_initial < 0):
+            self.theta1_real = theta1_initial + 2*np.pi
+        else:
+            self.theta1_real = theta1_initial
         self.theta2_real = theta2_inital
     
     def set_theta1(self, theta1):
