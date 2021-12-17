@@ -1343,7 +1343,7 @@ if __name__ == "__main__":
     17  analyze obstacles, make rrt path, animate
     '''
 
-    test = 17
+    test = 11
 
     if test == 1:
         sys = SCARA([[1,1],5,8])
@@ -1518,7 +1518,11 @@ if __name__ == "__main__":
     elif test == 11:
         scara = SCARA([[0,0],10,8])
 
-        o1 = [(-1.5,0.5),(-1.5,1),(-.5,1),(-.5,.5)]
+        theta = np.array([[110, 115]])
+        theta = theta/180*np.pi
+        scara.theta = theta
+
+        o1 = [(-1.5,0.5),(-1.5,1),(-.5,1),(0,-1.5)]
         o2 = [(5,-1),(5,1),(8,1),(8,-1)]
         o3 = [(4,12),(4,15),(6,15),(6,13),(10,9),(9,8),(5,12)]
 
@@ -1537,6 +1541,8 @@ if __name__ == "__main__":
         scara.plot_poly(proj1,'g')
         scara.plot_poly(proj2,'g')
         scara.plot_poly(proj3,'g')
+
+        scara.auto_plot_arm()
 
         ax,ay = scara.make_arc(0,0,scara.r1-scara.r2,[0,2*np.pi],200)
         bx,by = scara.make_arc(0,0,scara.r1,[0,2*np.pi],200)
