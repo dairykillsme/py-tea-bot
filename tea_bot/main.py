@@ -44,7 +44,7 @@ if __name__ == "__main__":
 
     projection_list = scara.obstacle_projector(map.obstacle_list)
     obs_and_proj = map.obstacle_list + projection_list
-    center_obstacle = geometry.point([0,0]).buffer(1.5)
+    center_obstacle = geometry.Point(0,0).buffer(1.5)
     obs_and_proj.append(center_obstacle)
 
     print('Projected obstacles!\n')
