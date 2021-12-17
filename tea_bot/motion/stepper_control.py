@@ -1,3 +1,4 @@
+from math import fmod
 from adafruit_motorkit import MotorKit
 import time
 import numpy as np
@@ -25,19 +26,23 @@ class MotionController:
     def set_theta2(self, theta2):
         self.theta2_target = theta2
     
+    def shortest(self, dest, source):
+        distance = fmod((dest - source + 2*np.pi), 2*np.pi)
+        return distance, distance > np.pi
+    
     def tick(self):
-        theta1_err = self.theta1_target - self.theta1_real
+        theta1_err, theta1_dir = self.shortest(self.theta1_target, self.theta1_real)
         if (np.abs(theta1_err) > MotionController.THETA_1_RADS_STEP):
-            if theta1_err > 0:
+            if theta1_dir:
                 self.kit.stepper2.onestep(direction=2, style=1)
                 self.theta1_real += MotionController.THETA_1_RADS_STEP
             else:
                 self.kit.stepper2.onestep(direction=1, style=1)
                 self.theta1_real -= MotionController.THETA_1_RADS_STEP
         
-        theta2_err = self.theta2_target - self.theta2_real
+        theta2_err, theta2_dir = self.shortest(self.theta2_target, self.theta2_real)
         if (np.abs(theta2_err) > MotionController.THETA_2_RADS_STEP):
-            if theta2_err > 0:
+            if theta2_dir:
                 self.kit.stepper1.onestep(direction=2, style=1)
                 self.theta2_real += MotionController.THETA_2_RADS_STEP
             else:
